@@ -1,0 +1,5 @@
+{
+  "jsPlugins": ["@uinaf/oxlint-plugin-no-comments"],
+  "categories": { "correctness": "off" },
+  "rules": { "uinaf/no-comments": "error" }
+}
