@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: main-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  verify:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify.yml # zizmor: ignore[self-repository]
+
+  release:
+    needs: [verify]
+    permissions:
+      contents: read
+      id-token: write
+    uses: uinaf/.github/.github/workflows/release-npm.yml@2925de07626b63b95f77f19e50f10fb7729033bd # v3.0.6
+    secrets:
+      UINAF_CI_APP_PRIVATE_KEY: ${{ secrets.UINAF_CI_APP_PRIVATE_KEY }}

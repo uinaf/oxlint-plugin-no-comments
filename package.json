@@ -1,0 +1,56 @@
+{
+  "name": "@uinaf/oxlint-plugin-no-comments",
+  "version": "0.0.0-semantic-release",
+  "description": "Oxlint rule that bans code comments, except tool directives, license headers, API docs, and SAFETY justifications",
+  "keywords": [
+    "comments",
+    "eslint",
+    "eslintplugin",
+    "oxlint",
+    "oxlint-plugin"
+  ],
+  "homepage": "https://github.com/uinaf/oxlint-plugin-no-comments#readme",
+  "bugs": {
+    "url": "https://github.com/uinaf/oxlint-plugin-no-comments/issues"
+  },
+  "license": "MIT",
+  "author": "undefined is not a function LLC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uinaf/oxlint-plugin-no-comments.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "verify": "vp run ready",
+    "verify:full": "vp run --no-cache ready",
+    "prepublishOnly": "pnpm run verify:full"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.90.0",
+    "@types/node": "^26.6.6",
+    "oxlint": "1.90.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^24.11.0 || >=26.0.0",
+      "onFail": "error"
+    }
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "packageManager": "pnpm@12.16.0"
+}
