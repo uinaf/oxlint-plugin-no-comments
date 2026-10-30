@@ -79,6 +79,8 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
     "// eslint-disable-next-line no-var\n/** Legacy flag. */\nexport var legacy = true;",
     "/** Public value. */\nconst { value, list: [first = 1] } = source;\nexport { value };",
     "/** Rest. */\nconst [, ...rest] = source;\nexport { rest };",
+    "export namespace Api { export interface Shape { /** Visible. */ field: string } }",
+    "export class Client { constructor(/** Base URL. */ public url: string, /** Retries. */ readonly retries: number) {} }",
   ],
   invalid: [
     { code: "/** Parse a user id. */\nfunction parse() {}", errors: [comment] },
@@ -94,6 +96,14 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
       errors: [comment, comment],
     },
     { code: "class Internal { /** Run. */ run() {} }", errors: [comment] },
+    {
+      code: "export namespace Api { interface Internal { /** Hidden. */ secret: string } }",
+      errors: [comment],
+    },
+    {
+      code: "export class Client { constructor(/** Hidden. */ private token: string) {} }",
+      errors: [comment],
+    },
     {
       code: "export class A { private options: { /** Secret. */ secret: string } = { secret: '' } }",
       errors: [comment],

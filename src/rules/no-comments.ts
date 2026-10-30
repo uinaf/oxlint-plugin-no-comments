@@ -38,6 +38,8 @@ const declarationKinds = new Set([
   "VariableDeclaration",
 ]);
 
+const scopeBoundaryKinds = new Set(["BlockStatement", "StaticBlock", "TSModuleBlock"]);
+
 const commentOwnerKinds = new Set([
   "ExpressionStatement",
   "PropertyDefinition",
@@ -138,8 +140,7 @@ function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
   let current = member.parent;
   while (current !== null) {
     if (api.has(current)) return true;
-    if (current.type === "BlockStatement" || current.type === "StaticBlock") return false;
-    if (isPrivateMember(current)) return false;
+    if (scopeBoundaryKinds.has(current.type) || isPrivateMember(current)) return false;
     if (current.type === "ArrowFunctionExpression" && current.body === previous) return false;
     previous = current;
     current = current.parent;
@@ -251,6 +252,7 @@ export const noCommentsRule = defineRule({
       TSConstructSignatureDeclaration: addMember,
       TSEnumMember: addMember,
       TSIndexSignature: addMember,
+      TSParameterProperty: addMember,
       TSMethodSignature: addMember,
       TSPropertySignature: addMember,
       TSAsExpression: addAssertion,
