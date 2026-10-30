@@ -101,11 +101,28 @@ function isPrivateMember(node: Node): boolean {
   return "key" in node && node.key.type === "PrivateIdentifier";
 }
 
+function boundNames(pattern: Node): string[] {
+  switch (pattern.type) {
+    case "Identifier":
+      return [pattern.name];
+    case "ObjectPattern":
+      return pattern.properties.flatMap((property) =>
+        boundNames(property.type === "RestElement" ? property.argument : property.value),
+      );
+    case "ArrayPattern":
+      return pattern.elements.flatMap((element) => (element === null ? [] : boundNames(element)));
+    case "AssignmentPattern":
+      return boundNames(pattern.left);
+    case "RestElement":
+      return boundNames(pattern.argument);
+    default:
+      return [];
+  }
+}
+
 function declaredNames(node: Node): string[] {
   if (node.type === "VariableDeclaration") {
-    return node.declarations.flatMap((declarator) =>
-      declarator.id.type === "Identifier" ? [declarator.id.name] : [],
-    );
+    return node.declarations.flatMap((declarator) => boundNames(declarator.id));
   }
   if ("id" in node && node.id !== null && node.id.type === "Identifier") return [node.id.name];
   return [];
@@ -115,12 +132,14 @@ function lastJSDocBefore(sourceCode: SourceCode, node: Node): Comment | undefine
   return sourceCode.getCommentsBefore(node).findLast(isJSDoc);
 }
 
-function isInsideApi(member: Node, api: ReadonlySet<Node>): boolean {
+function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
+  if (isPrivateMember(member)) return false;
   let previous = member;
   let current = member.parent;
   while (current !== null) {
     if (api.has(current)) return true;
     if (current.type === "BlockStatement" || current.type === "StaticBlock") return false;
+    if (isPrivateMember(current)) return false;
     if (current.type === "ArrowFunctionExpression" && current.body === previous) return false;
     previous = current;
     current = current.parent;
@@ -256,7 +275,7 @@ export const noCommentsRule = defineRule({
           if (doc !== undefined) allowed.add(doc.start);
         }
         for (const member of members) {
-          if (isPrivateMember(member) || !isInsideApi(member, apiNodes)) continue;
+          if (!isPublicApi(member, apiNodes)) continue;
           const doc = lastJSDocBefore(sourceCode, member);
           if (doc !== undefined) allowed.add(doc.start);
         }

@@ -77,6 +77,8 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
     "export namespace Api { /** Version. */ export const version = 1; }",
     "export type Handler = (options: { /** Abort signal. */ signal: AbortSignal }) => void;",
     "// eslint-disable-next-line no-var\n/** Legacy flag. */\nexport var legacy = true;",
+    "/** Public value. */\nconst { value, list: [first = 1] } = source;\nexport { value };",
+    "/** Rest. */\nconst [, ...rest] = source;\nexport { rest };",
   ],
   invalid: [
     { code: "/** Parse a user id. */\nfunction parse() {}", errors: [comment] },
@@ -92,6 +94,14 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
       errors: [comment, comment],
     },
     { code: "class Internal { /** Run. */ run() {} }", errors: [comment] },
+    {
+      code: "export class A { private options: { /** Secret. */ secret: string } = { secret: '' } }",
+      errors: [comment],
+    },
+    {
+      code: "export class A { #options: { /** Secret. */ secret: string } = { secret: '' } }",
+      errors: [comment],
+    },
     { code: "export const api = { /** Fetch. */ fetch() {} };", errors: [comment] },
     {
       code: "export function make() {\n  return class { /** Inner. */ run() {} };\n}",
