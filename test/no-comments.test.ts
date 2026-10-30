@@ -32,6 +32,9 @@ tester.run("uinaf/no-comments tool directives", noCommentsRule, {
     "await import(/* @vite-ignore */ path);",
     "// @vitest-environment node\nexport {};",
     "/** @vitest-environment node */\nexport {};",
+    "/**\n * @vitest-environment node\n */\nexport {};",
+    "/*\n * istanbul ignore next\n */\nfunction f() {}",
+    "/* eslint-disable\n  no-console,\n  no-alert\n*/\nconsole.log(1);",
     "#!/usr/bin/env node\nconsole.log(1);",
   ],
   invalid: [
@@ -43,6 +46,7 @@ tester.run("uinaf/no-comments tool directives", noCommentsRule, {
     { code: "// <reference> notes\nf();", errors: [comment] },
     { code: "const a = /* @__PURE__ call */ make();", errors: [comment] },
     { code: "// @vitest-environment-ish\nf();", errors: [comment] },
+    { code: "/**\n * Prose first.\n * @vitest-environment node\n */\nf();", errors: [comment] },
   ],
 });
 
