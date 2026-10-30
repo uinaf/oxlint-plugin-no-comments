@@ -80,6 +80,13 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
     "/** Public value. */\nconst { value, list: [first = 1] } = source;\nexport { value };",
     "/** Rest. */\nconst [, ...rest] = source;\nexport { rest };",
     "export namespace Api { export interface Shape { /** Visible. */ field: string } }",
+    "/** Public client. */\nclass Client { /** Send. */ send(): void {} }\nexport = Client;",
+    "export declare namespace Api { /** Options. */ interface Options { /** Public value. */ value: string } }",
+    "declare namespace Outer { namespace Inner { interface Shape { /** Field. */ field: string } } }\nexport { Outer };",
+    {
+      code: "export namespace Api { /** Options. */ interface Options { /** Public value. */ value: string } }",
+      filename: "api.d.ts",
+    },
     "export class Client { constructor(/** Base URL. */ public url: string, /** Retries. */ readonly retries: number) {} }",
   ],
   invalid: [
@@ -97,9 +104,10 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
     },
     { code: "class Internal { /** Run. */ run() {} }", errors: [comment] },
     {
-      code: "export namespace Api { interface Internal { /** Hidden. */ secret: string } }",
-      errors: [comment],
+      code: "export namespace Api { /** Hidden. */ interface Internal { /** Hidden. */ secret: string } }",
+      errors: [comment, comment],
     },
+    { code: "/** Internal. */\nclass Client {}\nexport = other;", errors: [comment] },
     {
       code: "export class Client { constructor(/** Hidden. */ private token: string) {} }",
       errors: [comment],

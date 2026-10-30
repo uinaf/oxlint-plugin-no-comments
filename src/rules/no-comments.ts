@@ -38,7 +38,9 @@ const declarationKinds = new Set([
   "VariableDeclaration",
 ]);
 
-const scopeBoundaryKinds = new Set(["BlockStatement", "StaticBlock", "TSModuleBlock"]);
+const scopeBoundaryKinds = new Set(["BlockStatement", "StaticBlock"]);
+
+const declarationFilePattern = /\.d\.[cm]?ts$/u;
 
 const commentOwnerKinds = new Set([
   "ExpressionStatement",
@@ -134,13 +136,24 @@ function lastJSDocBefore(sourceCode: SourceCode, node: Node): Comment | undefine
   return sourceCode.getCommentsBefore(node).findLast(isJSDoc);
 }
 
-function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
+function isAmbient(node: Node, declarationFile: boolean): boolean {
+  if (declarationFile) return true;
+  let current: Node | null = node;
+  while (current !== null) {
+    if (current.type === "TSModuleDeclaration" && current.declare) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function isPublicApi(member: Node, api: ReadonlySet<Node>, declarationFile: boolean): boolean {
   if (isPrivateMember(member)) return false;
   let previous = member;
   let current = member.parent;
   while (current !== null) {
     if (api.has(current)) return true;
     if (scopeBoundaryKinds.has(current.type) || isPrivateMember(current)) return false;
+    if (current.type === "TSModuleBlock" && !isAmbient(current, declarationFile)) return false;
     if (current.type === "ArrowFunctionExpression" && current.body === previous) return false;
     previous = current;
     current = current.parent;
@@ -242,6 +255,15 @@ export const noCommentsRule = defineRule({
         apiNodes.add(node);
         if (node.declaration.type === "Identifier") localExports.add(node.declaration.name);
       },
+      TSExportAssignment(node) {
+        apiNodes.add(node);
+        if (node.expression.type === "Identifier") localExports.add(node.expression.name);
+      },
+      TSModuleBlock(node) {
+        for (const statement of node.body) {
+          if (declarationKinds.has(statement.type)) members.push(statement);
+        }
+      },
       AccessorProperty: addMember,
       MethodDefinition: addMember,
       PropertyDefinition: addMember,
@@ -276,8 +298,9 @@ export const noCommentsRule = defineRule({
           const doc = lastJSDocBefore(sourceCode, node);
           if (doc !== undefined) allowed.add(doc.start);
         }
+        const declarationFile = declarationFilePattern.test(context.filename);
         for (const member of members) {
-          if (!isPublicApi(member, apiNodes)) continue;
+          if (!isPublicApi(member, apiNodes, declarationFile)) continue;
           const doc = lastJSDocBefore(sourceCode, member);
           if (doc !== undefined) allowed.add(doc.start);
         }
