@@ -75,9 +75,12 @@ function buildMatchers(option: unknown): Matchers {
 }
 
 function commentText(comment: Comment): string {
-  return comment.type === "Block"
-    ? comment.value.replace(/^\s*\**\s*/u, "").trimEnd()
-    : comment.value.trim();
+  if (comment.type !== "Block") return comment.value.trim();
+  return comment.value
+    .split("\n")
+    .map((line) => line.replace(/^\s*\**\s*/u, ""))
+    .join("\n")
+    .trim();
 }
 
 function isJSDoc(comment: Comment): boolean {
