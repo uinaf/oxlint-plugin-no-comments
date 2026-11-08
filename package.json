@@ -36,9 +36,9 @@
     "prepublishOnly": "pnpm run verify:full"
   },
   "devDependencies": {
-    "@oxlint/plugins": "1.90.0",
+    "@oxlint/plugins": "1.92.0",
     "@types/node": "^26.6.6",
-    "oxlint": "1.90.0",
+    "oxlint": "1.92.0",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -52,5 +52,5 @@
   "engines": {
     "node": ">=20.19.0"
   },
-  "packageManager": "pnpm@12.16.0"
+  "packageManager": "pnpm@12.18.0"
 }
