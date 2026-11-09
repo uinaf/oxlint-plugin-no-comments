@@ -5,6 +5,13 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 type Comment = ESTree.Comment;
 type Node = ESTree.Node;
 type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
+type JSXExpressionContainer = ESTree.JSXExpressionContainer;
+
+interface Edit {
+  start: number;
+  end: number;
+  text: string;
+}
 
 interface Matchers {
   allow: readonly RegExp[];
@@ -131,32 +138,102 @@ function declaredNames(node: Node): string[] {
   if (node.type === "VariableDeclaration") {
     return node.declarations.flatMap((declarator) => boundNames(declarator.id));
   }
-  if ("id" in node && node.id !== null && node.id.type === "Identifier") return [node.id.name];
-  return [];
+  if (!("id" in node) || node.id === null) return [];
+  let id: Node = node.id;
+  while (id.type === "TSQualifiedName") id = id.left;
+  return id.type === "Identifier" ? [id.name] : [];
+}
+
+function localExportNames(statements: readonly Node[]): Set<string> {
+  const names = new Set<string>();
+  for (const statement of statements) {
+    if (statement.type === "ExportNamedDeclaration" && statement.source === null) {
+      for (const specifier of statement.specifiers) {
+        if (specifier.local.type === "Identifier") names.add(specifier.local.name);
+      }
+    }
+    const target =
+      statement.type === "ExportDefaultDeclaration"
+        ? statement.declaration
+        : statement.type === "TSExportAssignment"
+          ? statement.expression
+          : null;
+    const root = target === null ? null : rootIdentifier(target);
+    if (root !== null) names.add(root);
+  }
+  return names;
+}
+
+function rootIdentifier(node: Node): string | null {
+  let current = node;
+  while (current.type === "MemberExpression" || current.type === "TSQualifiedName") {
+    current = current.type === "MemberExpression" ? current.object : current.left;
+  }
+  return current.type === "Identifier" ? current.name : null;
+}
+
+function hasExportDeclarations(statements: readonly Node[]): boolean {
+  return statements.some(
+    (statement) =>
+      (statement.type === "ExportNamedDeclaration" && statement.declaration === null) ||
+      statement.type === "ExportAllDeclaration" ||
+      statement.type === "TSExportAssignment" ||
+      (statement.type === "ExportDefaultDeclaration" &&
+        !declarationKinds.has(statement.declaration.type)),
+  );
+}
+
+function collectApi(
+  statements: readonly Node[],
+  visible: boolean,
+  ambient: boolean,
+  api: Set<Node>,
+): void {
+  const listed = localExportNames(statements);
+  const exportContext = ambient && !hasExportDeclarations(statements);
+  for (const statement of statements) {
+    let declaration: Node | null = null;
+    let explicit = false;
+    let implicit = false;
+    if (statement.type === "ExportNamedDeclaration") {
+      declaration = statement.declaration;
+      explicit = declaration !== null;
+    } else if (
+      statement.type === "ExportDefaultDeclaration" ||
+      statement.type === "TSExportAssignment"
+    ) {
+      explicit = true;
+    } else if (declarationKinds.has(statement.type)) {
+      declaration = statement;
+      implicit = exportContext || declaredNames(statement).some((name) => listed.has(name));
+    }
+    const exported = explicit || (visible && implicit);
+    if (exported) api.add(statement);
+    if (declaration?.type !== "TSModuleDeclaration" || declaration.body?.type !== "TSModuleBlock") {
+      continue;
+    }
+    const external = declaration.global || declaration.id.type === "Literal";
+    collectApi(
+      declaration.body.body,
+      external || (visible && exported),
+      ambient || declaration.declare,
+      api,
+    );
+  }
 }
 
 function lastJSDocBefore(sourceCode: SourceCode, node: Node): Comment | undefined {
   return sourceCode.getCommentsBefore(node).findLast(isJSDoc);
 }
 
-function isAmbient(node: Node, declarationFile: boolean): boolean {
-  if (declarationFile) return true;
-  let current: Node | null = node;
-  while (current !== null) {
-    if (current.type === "TSModuleDeclaration" && current.declare) return true;
-    current = current.parent;
-  }
-  return false;
-}
-
-function isPublicApi(member: Node, api: ReadonlySet<Node>, declarationFile: boolean): boolean {
+function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
   if (isPrivateMember(member)) return false;
   let previous = member;
   let current = member.parent;
   while (current !== null) {
     if (api.has(current)) return true;
     if (scopeBoundaryKinds.has(current.type) || isPrivateMember(current)) return false;
-    if (current.type === "TSModuleBlock" && !isAmbient(current, declarationFile)) return false;
+    if (current.type === "TSModuleBlock") return false;
     if (current.type === "ArrowFunctionExpression" && current.body === previous) return false;
     previous = current;
     current = current.parent;
@@ -193,10 +270,163 @@ function safetyCommentsFor(
   }
 }
 
+const lineBreakPattern = /[\n\r\u2028\u2029]/u;
+const blankPattern = /^\s*$/u;
+const isLineBreak = (char: string | undefined) => char !== undefined && lineBreakPattern.test(char);
+
+function isInlineSpace(char: string | undefined): boolean {
+  return char !== undefined && /\s/u.test(char) && !isLineBreak(char);
+}
+
+function nextLineStart(text: string, end: number): number {
+  if (text.startsWith("\r\n", end)) return end + 2;
+  return Math.min(end + 1, text.length);
+}
+
+function renderedJSXText(value: string): string {
+  const lines = value.split(/\r\n|[\n\r]/u);
+  return lines
+    .map((line, index) => {
+      const start = index > 0 ? line.replace(/^[ \t]+/u, "") : line;
+      return index < lines.length - 1 ? start.replace(/[ \t]+$/u, "") : start;
+    })
+    .filter((line) => line.length > 0)
+    .join(" ");
+}
+
+interface Mark {
+  start: number;
+  end: number;
+  text: string;
+  render: string | null;
+}
+
+function renderChildren(text: string, from: number, to: number, marks: Mark[]): string {
+  let output = "";
+  let pending = "";
+  let cursor = from;
+  for (const mark of marks.toSorted((a, b) => a.start - b.start)) {
+    pending += text.slice(cursor, Math.max(cursor, mark.start)) + mark.text;
+    cursor = Math.max(cursor, mark.end);
+    if (mark.render === null) continue;
+    output += renderedJSXText(pending) + mark.render;
+    pending = "";
+  }
+  return output + renderedJSXText(pending + text.slice(cursor, to));
+}
+
+function keepsRenderedText(text: string, parent: Node, planned: ReadonlyMap<Node, Edit>): boolean {
+  if (parent.type !== "JSXElement" && parent.type !== "JSXFragment") return true;
+  let from = parent.children[0]?.start ?? parent.start;
+  let to = parent.children.at(-1)?.end ?? parent.end;
+  for (const edit of planned.values()) {
+    from = Math.min(from, edit.start);
+    to = Math.max(to, edit.end);
+  }
+  const before: Mark[] = [];
+  const after: Mark[] = [];
+  for (const child of parent.children) {
+    if (child.type === "JSXText") continue;
+    const render = child.type === "JSXExpressionContainer" ? "" : "\u0000";
+    const separator = { start: child.start, end: child.end, text: "", render };
+    before.push(separator);
+    const edit = planned.get(child);
+    after.push(edit === undefined ? separator : { ...edit, render: null });
+  }
+  return renderChildren(text, from, to, before) === renderChildren(text, from, to, after);
+}
+
+function removal(text: string, start: number, end: number, jsx: boolean): Edit {
+  let from = start;
+  while (isInlineSpace(text[from - 1])) from--;
+  let to = end;
+  while (isInlineSpace(text[to])) to++;
+  const blankBefore = from === 0 || isLineBreak(text[from - 1]);
+  const blankAfter = to === text.length || isLineBreak(text[to]);
+  if (blankBefore && blankAfter) return { start: from, end: nextLineStart(text, to), text: "" };
+  if (jsx) return { start, end, text: "" };
+  if (blankAfter) return { start: from, end, text: "" };
+  if (blankBefore) return { start, end: to, text: "" };
+  const separator = lineBreakPattern.test(text.slice(from, end))
+    ? "\n"
+    : isInlineSpace(text[end])
+      ? ""
+      : " ";
+  return { start: from, end, text: separator };
+}
+
+function commentRuns(text: string, reported: readonly Comment[]): Comment[][] {
+  const runs: Comment[][] = [];
+  for (const comment of reported) {
+    const run = runs.at(-1);
+    const previous = run?.at(-1);
+    if (run !== undefined && previous !== undefined) {
+      if (blankPattern.test(text.slice(previous.end, comment.start))) {
+        run.push(comment);
+        continue;
+      }
+    }
+    runs.push([comment]);
+  }
+  return runs;
+}
+
+function planEdits(
+  text: string,
+  comments: readonly Comment[],
+  reported: readonly Comment[],
+  containers: readonly JSXExpressionContainer[],
+): Map<Comment, Edit> {
+  const reportedSet = new Set(reported);
+  const sorted = containers.toSorted((a, b) => a.start - b.start);
+  const keepsComment = new Set<JSXExpressionContainer>();
+  let index = 0;
+  for (const comment of comments) {
+    let container = sorted[index];
+    while (container !== undefined && container.end <= comment.start) container = sorted[++index];
+    if (container !== undefined && container.start < comment.start && !reportedSet.has(comment)) {
+      keepsComment.add(container);
+    }
+  }
+
+  const edits = new Map<Comment, Edit>();
+  const byParent = new Map<Node, Map<Node, Edit>>();
+  const owners = new Map<Node, Comment>();
+  index = 0;
+  for (const run of commentRuns(text, reported)) {
+    const first = run[0];
+    const last = run.at(-1);
+    if (first === undefined || last === undefined) continue;
+    let candidate = sorted[index];
+    while (candidate !== undefined && candidate.end <= first.start) candidate = sorted[++index];
+    const container =
+      candidate !== undefined && candidate.start < first.start && last.end < candidate.end
+        ? candidate
+        : undefined;
+    if (container !== undefined && !keepsComment.has(container)) {
+      const planned = byParent.get(container.parent) ?? new Map<Node, Edit>();
+      planned.set(container, removal(text, container.start, container.end, true));
+      byParent.set(container.parent, planned);
+      owners.set(container, first);
+      continue;
+    }
+    edits.set(first, removal(text, first.start, last.end, false));
+  }
+  for (const [parent, planned] of byParent) {
+    if (!keepsRenderedText(text, parent, planned)) continue;
+    for (const [container, edit] of planned) {
+      const owner = owners.get(container);
+      if (owner !== undefined) edits.set(owner, edit);
+    }
+  }
+  return edits;
+}
+
 /** Ban code comments except tool directives, license headers, JSDoc on exported API, and SAFETY justifications. */
 export const noCommentsRule = defineRule({
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Disallow comments other than tool directives, license headers, JSDoc on exported API, and SAFETY justifications for type assertions.",
@@ -228,10 +458,9 @@ export const noCommentsRule = defineRule({
   },
   createOnce(context) {
     const matchersByOption = new Map<string, Matchers>();
-    const apiNodes = new Set<Node>();
     const members: Node[] = [];
     const assertions: TypeAssertion[] = [];
-    const localExports = new Set<string>();
+    const emptyContainers: JSXExpressionContainer[] = [];
 
     const addMember = (node: Node) => {
       members.push(node);
@@ -242,30 +471,12 @@ export const noCommentsRule = defineRule({
 
     return {
       before() {
-        apiNodes.clear();
         members.length = 0;
         assertions.length = 0;
-        localExports.clear();
+        emptyContainers.length = 0;
       },
-      ExportNamedDeclaration(node) {
-        if (node.declaration !== null) apiNodes.add(node);
-        if (node.source !== null) return;
-        for (const specifier of node.specifiers) {
-          if (specifier.local.type === "Identifier") localExports.add(specifier.local.name);
-        }
-      },
-      ExportDefaultDeclaration(node) {
-        apiNodes.add(node);
-        if (node.declaration.type === "Identifier") localExports.add(node.declaration.name);
-      },
-      TSExportAssignment(node) {
-        apiNodes.add(node);
-        if (node.expression.type === "Identifier") localExports.add(node.expression.name);
-      },
-      TSModuleBlock(node) {
-        for (const statement of node.body) {
-          if (declarationKinds.has(statement.type)) members.push(statement);
-        }
+      JSXExpressionContainer(node) {
+        if (node.expression.type === "JSXEmptyExpression") emptyContainers.push(node);
       },
       AccessorProperty: addMember,
       MethodDefinition: addMember,
@@ -289,21 +500,17 @@ export const noCommentsRule = defineRule({
         const matchers = matchersByOption.get(optionKey) ?? buildMatchers(option);
         matchersByOption.set(optionKey, matchers);
 
-        for (const statement of program.body) {
-          if (!declarationKinds.has(statement.type)) continue;
-          if (declaredNames(statement).some((name) => localExports.has(name))) {
-            apiNodes.add(statement);
-          }
-        }
+        const apiNodes = new Set<Node>();
+        const declarationFile = declarationFilePattern.test(context.filename);
+        collectApi(program.body, true, declarationFile, apiNodes);
 
         const allowed = new Set<number>();
         for (const node of apiNodes) {
           const doc = lastJSDocBefore(sourceCode, node);
           if (doc !== undefined) allowed.add(doc.start);
         }
-        const declarationFile = declarationFilePattern.test(context.filename);
         for (const member of members) {
-          if (!isPublicApi(member, apiNodes, declarationFile)) continue;
+          if (!isPublicApi(member, apiNodes)) continue;
           const doc = lastJSDocBefore(sourceCode, member);
           if (doc !== undefined) allowed.add(doc.start);
         }
@@ -314,13 +521,25 @@ export const noCommentsRule = defineRule({
         }
 
         const headerEnd = program.body[0]?.start ?? program.end;
-        for (const comment of sourceCode.getAllComments()) {
-          if (comment.type === "Shebang" || allowed.has(comment.start)) continue;
-          if (isLicenseHeader(comment, headerEnd)) continue;
+        const comments = sourceCode.getAllComments();
+        const reported = comments.filter((comment) => {
+          if (comment.type === "Shebang" || allowed.has(comment.start)) return false;
+          if (isLicenseHeader(comment, headerEnd)) return false;
           const text = commentText(comment);
-          if (directivePatterns.some((pattern) => pattern.test(text))) continue;
-          if (matchers.allow.some((pattern) => pattern.test(text))) continue;
-          context.report({ node: comment, messageId: "comment" });
+          if (directivePatterns.some((pattern) => pattern.test(text))) return false;
+          return !matchers.allow.some((pattern) => pattern.test(text));
+        });
+
+        const edits = planEdits(sourceCode.text, comments, reported, emptyContainers);
+        for (const comment of reported) {
+          const edit = edits.get(comment);
+          context.report({
+            node: comment,
+            messageId: "comment",
+            ...(edit === undefined
+              ? {}
+              : { fix: (fixer) => fixer.replaceTextRange([edit.start, edit.end], edit.text) }),
+          });
         }
       },
     };

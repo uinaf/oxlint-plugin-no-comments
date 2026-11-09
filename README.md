@@ -44,11 +44,16 @@ lint: {
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Tool directives | `eslint-disable*`, `eslint-enable*`, `oxlint-disable*`, `oxlint-enable*`, `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, `@ts-check`, `/// <reference …>`, `prettier-ignore`, `istanbul`/`c8`/`v8 ignore`, `node:coverage`, `@__PURE__`, `@__NO_SIDE_EFFECTS__`, `@vite-ignore`, `@vitest-environment` |
 | License headers | `/*! … */`, `@license`, or `SPDX-*` before the first statement                                                                                                                                                                                                                                           |
-| API docs        | The last JSDoc block before an exported declaration, or before a public member of an exported class, interface, type, or enum                                                                                                                                                                            |
+| API docs        | The last JSDoc block before a declaration TypeScript exports, or before a public member of an exported class, interface, type, or enum. This counts implicit exports in `.d.ts` files, `declare module`, and `declare global`                                                                            |
 | Lint-required   | `SAFETY:` comments that anti-slop's `require-safety-comment-for-type-assertion` accepts for a non-`const` type assertion                                                                                                                                                                                 |
 
 Everything else is reported, including `TODO`, JSX comments, JSDoc on
 internal code, and `SAFETY:` comments with no assertion to justify.
+
+`oxlint --fix` deletes reported comments. The fix keeps tokens apart and keeps
+line breaks that automatic semicolon insertion depends on. It removes a JSX
+`{/* … */}` container as a whole, and it does nothing when the container sits
+between two runs of JSX text.
 
 ## Options
 
