@@ -355,6 +355,11 @@ const fixes = [
   },
   { code: "const v = <p>a {/* x */}</p>;", output: "const v = <p>a </p>;", errors: 1 },
   { code: "const v = <p>a {/* x */} b</p>;", output: "const v = <p>a  b</p>;", errors: 1 },
+  {
+    code: "const v = <p>\n  <b />\n  {/* x */}{/* y */}\n</p>;",
+    output: "const v = <p>\n  <b />\n  {/* y */}\n</p>;",
+    errors: 2,
+  },
   { code: "const v = <div>{/* a */ /* b */}</div>;", output: "const v = <div></div>;", errors: 2 },
   {
     code: "const v = <div>{/* a */ /* @vite-ignore */}</div>;",
@@ -372,6 +377,16 @@ tester.run("uinaf/no-comments autofix", noCommentsRule, {
       errors: Array.from({ length: errors }, () => comment),
     })),
     { code: "const v = <p><b>Hi</b>\n{/* x */} there</p>;", output: null, errors: [comment] },
+    {
+      code: "const v = <p>a\n{/* x */}{/* y */}\nb</p>;",
+      output: null,
+      errors: [comment, comment],
+    },
+    {
+      code: "const v = <p>a\n{/* x */}\n{/* y */}\nb</p>;",
+      output: null,
+      errors: [comment, comment],
+    },
     {
       code: "const v = (\n  <p>\n    a\n    {/* x */}\n    b\n  </p>\n);",
       output: null,

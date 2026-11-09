@@ -308,21 +308,46 @@ function renderedJSXText(value: string): string {
     .join(" ");
 }
 
-function keepsRenderedText(text: string, container: JSXExpressionContainer, edit: Edit): boolean {
-  const parent = container.parent;
+interface Mark {
+  start: number;
+  end: number;
+  text: string;
+  render: string | null;
+}
+
+function renderChildren(text: string, from: number, to: number, marks: Mark[]): string {
+  let output = "";
+  let pending = "";
+  let cursor = from;
+  for (const mark of marks.toSorted((a, b) => a.start - b.start)) {
+    pending += text.slice(cursor, Math.max(cursor, mark.start)) + mark.text;
+    cursor = Math.max(cursor, mark.end);
+    if (mark.render === null) continue;
+    output += renderedJSXText(pending) + mark.render;
+    pending = "";
+  }
+  return output + renderedJSXText(pending + text.slice(cursor, to));
+}
+
+function keepsRenderedText(text: string, parent: Node, planned: ReadonlyMap<Node, Edit>): boolean {
   if (parent.type !== "JSXElement" && parent.type !== "JSXFragment") return true;
-  const index = parent.children.indexOf(container);
-  const previous = parent.children[index - 1];
-  const next = parent.children[index + 1];
-  const from = previous?.type === "JSXText" ? previous.start : edit.start;
-  const to = next?.type === "JSXText" ? next.end : edit.end;
-  const before =
-    (previous?.type === "JSXText" ? renderedJSXText(previous.value) : "") +
-    (next?.type === "JSXText" ? renderedJSXText(next.value) : "");
-  const after = renderedJSXText(
-    text.slice(from, edit.start) + edit.text + text.slice(edit.end, to),
-  );
-  return before === after;
+  let from = parent.children[0]?.start ?? parent.start;
+  let to = parent.children.at(-1)?.end ?? parent.end;
+  for (const edit of planned.values()) {
+    from = Math.min(from, edit.start);
+    to = Math.max(to, edit.end);
+  }
+  const before: Mark[] = [];
+  const after: Mark[] = [];
+  for (const child of parent.children) {
+    if (child.type === "JSXText") continue;
+    const render = child.type === "JSXExpressionContainer" ? "" : "\u0000";
+    const separator = { start: child.start, end: child.end, text: "", render };
+    before.push(separator);
+    const edit = planned.get(child);
+    after.push(edit === undefined ? separator : { ...edit, render: null });
+  }
+  return renderChildren(text, from, to, before) === renderChildren(text, from, to, after);
 }
 
 function removal(text: string, start: number, end: number, jsx: boolean): Edit {
@@ -380,6 +405,8 @@ function planEdits(
   }
 
   const edits = new Map<Comment, Edit>();
+  const byParent = new Map<Node, Map<Node, Edit>>();
+  const owners = new Map<Node, Comment>();
   index = 0;
   for (const run of commentRuns(text, reported)) {
     const first = run[0];
@@ -392,11 +419,20 @@ function planEdits(
         ? candidate
         : undefined;
     if (container !== undefined && !keepsComment.has(container)) {
-      const edit = removal(text, container.start, container.end, true);
-      if (keepsRenderedText(text, container, edit)) edits.set(first, edit);
+      const planned = byParent.get(container.parent) ?? new Map<Node, Edit>();
+      planned.set(container, removal(text, container.start, container.end, true));
+      byParent.set(container.parent, planned);
+      owners.set(container, first);
       continue;
     }
     edits.set(first, removal(text, first.start, last.end, false));
+  }
+  for (const [parent, planned] of byParent) {
+    if (!keepsRenderedText(text, parent, planned)) continue;
+    for (const [container, edit] of planned) {
+      const owner = owners.get(container);
+      if (owner !== undefined) edits.set(owner, edit);
+    }
   }
   return edits;
 }
