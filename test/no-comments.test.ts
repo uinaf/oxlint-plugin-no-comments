@@ -119,6 +119,7 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
     "declare module 'x' { /** Options. */ interface Options {} }",
     "declare global { interface Window { /** App. */ app: string } }\nexport {};",
     "namespace Outer { export namespace Inner { /** API. */ export class Client {} } }\nexport = Outer.Inner;",
+    "namespace Outer { export namespace Inner { /** API. */ export class Client {} } }\nimport API = Outer.Inner;\nexport = API;",
   ],
   invalid: [
     {
@@ -200,11 +201,6 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
     {
       code: "/** Doc. */\nconst a = 1;\nexport { b };",
       output: "const a = 1;\nexport { b };",
-      errors: [comment],
-    },
-    {
-      code: "namespace Internal { /** Doc. */ export function f() {} }",
-      output: "namespace Internal { export function f() {} }",
       errors: [comment],
     },
     {

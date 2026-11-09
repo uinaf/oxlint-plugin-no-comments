@@ -193,20 +193,22 @@ function collectApi(
   const exportContext = ambient && !hasExportDeclarations(statements);
   for (const statement of statements) {
     let declaration: Node | null = null;
-    let exported = false;
+    let explicit = false;
+    let implicit = false;
     if (statement.type === "ExportNamedDeclaration") {
       declaration = statement.declaration;
-      exported = declaration !== null;
+      explicit = declaration !== null;
     } else if (
       statement.type === "ExportDefaultDeclaration" ||
       statement.type === "TSExportAssignment"
     ) {
-      exported = true;
+      explicit = true;
     } else if (declarationKinds.has(statement.type)) {
       declaration = statement;
-      exported = exportContext || declaredNames(statement).some((name) => listed.has(name));
+      implicit = exportContext || declaredNames(statement).some((name) => listed.has(name));
     }
-    if (visible && exported) api.add(statement);
+    const exported = explicit || (visible && implicit);
+    if (exported) api.add(statement);
     if (declaration?.type !== "TSModuleDeclaration" || declaration.body?.type !== "TSModuleBlock") {
       continue;
     }
