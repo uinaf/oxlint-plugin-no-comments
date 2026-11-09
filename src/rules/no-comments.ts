@@ -272,29 +272,13 @@ const lineBreakPattern = /[\n\r\u2028\u2029]/u;
 const blankPattern = /^\s*$/u;
 const isLineBreak = (char: string | undefined) => char !== undefined && lineBreakPattern.test(char);
 
-function lineStart(text: string, position: number): number {
-  let start = position;
-  while (start > 0 && !isLineBreak(text[start - 1])) start--;
-  return start;
-}
-
-function lineEnd(text: string, position: number): number {
-  let end = position;
-  while (end < text.length && !isLineBreak(text[end])) end++;
-  return end;
+function isInlineSpace(char: string | undefined): boolean {
+  return char !== undefined && /\s/u.test(char) && !isLineBreak(char);
 }
 
 function nextLineStart(text: string, end: number): number {
   if (text.startsWith("\r\n", end)) return end + 2;
   return Math.min(end + 1, text.length);
-}
-
-function leadingSpace(text: string): number {
-  return text.length - text.trimStart().length;
-}
-
-function trailingSpace(text: string): number {
-  return text.length - text.trimEnd().length;
 }
 
 function renderedJSXText(value: string): string {
@@ -351,20 +335,19 @@ function keepsRenderedText(text: string, parent: Node, planned: ReadonlyMap<Node
 }
 
 function removal(text: string, start: number, end: number, jsx: boolean): Edit {
-  const first = lineStart(text, start);
-  const last = lineEnd(text, end);
-  const before = text.slice(first, start);
-  const after = text.slice(end, last);
-  if (blankPattern.test(before) && blankPattern.test(after)) {
-    return { start: first, end: nextLineStart(text, last), text: "" };
-  }
+  let from = start;
+  while (isInlineSpace(text[from - 1])) from--;
+  let to = end;
+  while (isInlineSpace(text[to])) to++;
+  const blankBefore = from === 0 || isLineBreak(text[from - 1]);
+  const blankAfter = to === text.length || isLineBreak(text[to]);
+  if (blankBefore && blankAfter) return { start: from, end: nextLineStart(text, to), text: "" };
   if (jsx) return { start, end, text: "" };
-  if (blankPattern.test(after)) return { start: start - trailingSpace(before), end, text: "" };
-  if (blankPattern.test(before)) return { start, end: end + leadingSpace(after), text: "" };
-  const from = start - trailingSpace(before);
+  if (blankAfter) return { start: from, end, text: "" };
+  if (blankBefore) return { start, end: to, text: "" };
   const separator = lineBreakPattern.test(text.slice(from, end))
     ? "\n"
-    : blankPattern.test(text[end] ?? "")
+    : isInlineSpace(text[end])
       ? ""
       : " ";
   return { start: from, end, text: separator };
