@@ -118,6 +118,7 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
     "declare module 'x' { /** Run. */ export function run(): void; }",
     "declare module 'x' { /** Options. */ interface Options {} }",
     "declare global { interface Window { /** App. */ app: string } }\nexport {};",
+    "namespace Outer { export namespace Inner { /** API. */ export class Client {} } }\nexport = Outer.Inner;",
   ],
   invalid: [
     {
@@ -353,6 +354,7 @@ const fixes = [
     errors: 1,
   },
   { code: "const v = <p>a {/* x */}</p>;", output: "const v = <p>a </p>;", errors: 1 },
+  { code: "const v = <p>a {/* x */} b</p>;", output: "const v = <p>a  b</p>;", errors: 1 },
   { code: "const v = <div>{/* a */ /* b */}</div>;", output: "const v = <div></div>;", errors: 2 },
   {
     code: "const v = <div>{/* a */ /* @vite-ignore */}</div>;",
@@ -369,7 +371,7 @@ tester.run("uinaf/no-comments autofix", noCommentsRule, {
       output,
       errors: Array.from({ length: errors }, () => comment),
     })),
-    { code: "const v = <p>a {/* x */} b</p>;", output: null, errors: [comment] },
+    { code: "const v = <p><b>Hi</b>\n{/* x */} there</p>;", output: null, errors: [comment] },
     {
       code: "const v = (\n  <p>\n    a\n    {/* x */}\n    b\n  </p>\n);",
       output: null,
@@ -382,11 +384,22 @@ function jsxText(value: string): string {
   const lines = value.split(/\r\n|[\n\r]/u);
   return lines
     .map((line, index) => {
-      const start = index > 0 ? line.trimStart() : line;
-      return index < lines.length - 1 ? start.trimEnd() : start;
+      const start = index > 0 ? line.replace(/^[ \t]+/u, "") : line;
+      return index < lines.length - 1 ? start.replace(/[ \t]+$/u, "") : start;
     })
     .filter((line) => line.length > 0)
     .join(" ");
+}
+
+function isJSXText(value: unknown): value is { type: "JSXText"; value: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "JSXText" &&
+    "value" in value &&
+    typeof value.value === "string"
+  );
 }
 
 function rendersNothing(value: unknown): boolean {
@@ -403,7 +416,18 @@ function rendersNothing(value: unknown): boolean {
 }
 
 function shape(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(shape).filter((item) => !rendersNothing(item));
+  if (Array.isArray(value)) {
+    const items: unknown[] = [];
+    for (const item of value.map(shape).filter((child) => !rendersNothing(child))) {
+      const previous = items.at(-1);
+      if (isJSXText(previous) && isJSXText(item)) {
+        items[items.length - 1] = { type: "JSXText", value: previous.value + item.value };
+      } else {
+        items.push(item);
+      }
+    }
+    return items;
+  }
   if (typeof value !== "object" || value === null) return value;
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {

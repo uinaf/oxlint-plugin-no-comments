@@ -152,17 +152,24 @@ function localExportNames(statements: readonly Node[]): Set<string> {
         if (specifier.local.type === "Identifier") names.add(specifier.local.name);
       }
     }
-    if (
-      statement.type === "ExportDefaultDeclaration" &&
-      statement.declaration.type === "Identifier"
-    ) {
-      names.add(statement.declaration.name);
-    }
-    if (statement.type === "TSExportAssignment" && statement.expression.type === "Identifier") {
-      names.add(statement.expression.name);
-    }
+    const target =
+      statement.type === "ExportDefaultDeclaration"
+        ? statement.declaration
+        : statement.type === "TSExportAssignment"
+          ? statement.expression
+          : null;
+    const root = target === null ? null : rootIdentifier(target);
+    if (root !== null) names.add(root);
   }
   return names;
+}
+
+function rootIdentifier(node: Node): string | null {
+  let current = node;
+  while (current.type === "MemberExpression" || current.type === "TSQualifiedName") {
+    current = current.type === "MemberExpression" ? current.object : current.left;
+  }
+  return current.type === "Identifier" ? current.name : null;
 }
 
 function hasExportDeclarations(statements: readonly Node[]): boolean {
@@ -290,15 +297,32 @@ function trailingSpace(text: string): number {
   return text.length - text.trimEnd().length;
 }
 
-function hasText(node: Node | undefined): boolean {
-  return node?.type === "JSXText" && !blankPattern.test(node.value);
+function renderedJSXText(value: string): string {
+  const lines = value.split(/\r\n|[\n\r]/u);
+  return lines
+    .map((line, index) => {
+      const start = index > 0 ? line.replace(/^[ \t]+/u, "") : line;
+      return index < lines.length - 1 ? start.replace(/[ \t]+$/u, "") : start;
+    })
+    .filter((line) => line.length > 0)
+    .join(" ");
 }
 
-function separatesText(container: JSXExpressionContainer): boolean {
+function keepsRenderedText(text: string, container: JSXExpressionContainer, edit: Edit): boolean {
   const parent = container.parent;
-  if (parent.type !== "JSXElement" && parent.type !== "JSXFragment") return false;
+  if (parent.type !== "JSXElement" && parent.type !== "JSXFragment") return true;
   const index = parent.children.indexOf(container);
-  return hasText(parent.children[index - 1]) && hasText(parent.children[index + 1]);
+  const previous = parent.children[index - 1];
+  const next = parent.children[index + 1];
+  const from = previous?.type === "JSXText" ? previous.start : edit.start;
+  const to = next?.type === "JSXText" ? next.end : edit.end;
+  const before =
+    (previous?.type === "JSXText" ? renderedJSXText(previous.value) : "") +
+    (next?.type === "JSXText" ? renderedJSXText(next.value) : "");
+  const after = renderedJSXText(
+    text.slice(from, edit.start) + edit.text + text.slice(edit.end, to),
+  );
+  return before === after;
 }
 
 function removal(text: string, start: number, end: number, jsx: boolean): Edit {
@@ -344,22 +368,32 @@ function planEdits(
   containers: readonly JSXExpressionContainer[],
 ): Map<Comment, Edit> {
   const reportedSet = new Set(reported);
+  const sorted = containers.toSorted((a, b) => a.start - b.start);
+  const keepsComment = new Set<JSXExpressionContainer>();
+  let index = 0;
+  for (const comment of comments) {
+    let container = sorted[index];
+    while (container !== undefined && container.end <= comment.start) container = sorted[++index];
+    if (container !== undefined && container.start < comment.start && !reportedSet.has(comment)) {
+      keepsComment.add(container);
+    }
+  }
+
   const edits = new Map<Comment, Edit>();
+  index = 0;
   for (const run of commentRuns(text, reported)) {
     const first = run[0];
     const last = run.at(-1);
     if (first === undefined || last === undefined) continue;
-    const container = containers.find(
-      (candidate) => candidate.start < first.start && last.end < candidate.end,
-    );
-    const inside = comments.filter(
-      (comment) =>
-        container !== undefined && container.start < comment.start && comment.end < container.end,
-    );
-    if (container !== undefined && inside.every((comment) => reportedSet.has(comment))) {
-      if (!separatesText(container)) {
-        edits.set(first, removal(text, container.start, container.end, true));
-      }
+    let candidate = sorted[index];
+    while (candidate !== undefined && candidate.end <= first.start) candidate = sorted[++index];
+    const container =
+      candidate !== undefined && candidate.start < first.start && last.end < candidate.end
+        ? candidate
+        : undefined;
+    if (container !== undefined && !keepsComment.has(container)) {
+      const edit = removal(text, container.start, container.end, true);
+      if (keepsRenderedText(text, container, edit)) edits.set(first, edit);
       continue;
     }
     edits.set(first, removal(text, first.start, last.end, false));
