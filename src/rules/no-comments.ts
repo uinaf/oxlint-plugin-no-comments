@@ -5,6 +5,13 @@ import type { ESTree, SourceCode } from "@oxlint/plugins";
 type Comment = ESTree.Comment;
 type Node = ESTree.Node;
 type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
+type JSXExpressionContainer = ESTree.JSXExpressionContainer;
+
+interface Edit {
+  start: number;
+  end: number;
+  text: string;
+}
 
 interface Matchers {
   allow: readonly RegExp[];
@@ -131,32 +138,93 @@ function declaredNames(node: Node): string[] {
   if (node.type === "VariableDeclaration") {
     return node.declarations.flatMap((declarator) => boundNames(declarator.id));
   }
-  if ("id" in node && node.id !== null && node.id.type === "Identifier") return [node.id.name];
-  return [];
+  if (!("id" in node) || node.id === null) return [];
+  let id: Node = node.id;
+  while (id.type === "TSQualifiedName") id = id.left;
+  return id.type === "Identifier" ? [id.name] : [];
+}
+
+function localExportNames(statements: readonly Node[]): Set<string> {
+  const names = new Set<string>();
+  for (const statement of statements) {
+    if (statement.type === "ExportNamedDeclaration" && statement.source === null) {
+      for (const specifier of statement.specifiers) {
+        if (specifier.local.type === "Identifier") names.add(specifier.local.name);
+      }
+    }
+    if (
+      statement.type === "ExportDefaultDeclaration" &&
+      statement.declaration.type === "Identifier"
+    ) {
+      names.add(statement.declaration.name);
+    }
+    if (statement.type === "TSExportAssignment" && statement.expression.type === "Identifier") {
+      names.add(statement.expression.name);
+    }
+  }
+  return names;
+}
+
+function hasExportDeclarations(statements: readonly Node[]): boolean {
+  return statements.some(
+    (statement) =>
+      (statement.type === "ExportNamedDeclaration" && statement.declaration === null) ||
+      statement.type === "ExportAllDeclaration" ||
+      statement.type === "TSExportAssignment" ||
+      (statement.type === "ExportDefaultDeclaration" &&
+        !declarationKinds.has(statement.declaration.type)),
+  );
+}
+
+function collectApi(
+  statements: readonly Node[],
+  visible: boolean,
+  ambient: boolean,
+  api: Set<Node>,
+): void {
+  const listed = localExportNames(statements);
+  const exportContext = ambient && !hasExportDeclarations(statements);
+  for (const statement of statements) {
+    let declaration: Node | null = null;
+    let exported = false;
+    if (statement.type === "ExportNamedDeclaration") {
+      declaration = statement.declaration;
+      exported = declaration !== null;
+    } else if (
+      statement.type === "ExportDefaultDeclaration" ||
+      statement.type === "TSExportAssignment"
+    ) {
+      exported = true;
+    } else if (declarationKinds.has(statement.type)) {
+      declaration = statement;
+      exported = exportContext || declaredNames(statement).some((name) => listed.has(name));
+    }
+    if (visible && exported) api.add(statement);
+    if (declaration?.type !== "TSModuleDeclaration" || declaration.body?.type !== "TSModuleBlock") {
+      continue;
+    }
+    const external = declaration.global || declaration.id.type === "Literal";
+    collectApi(
+      declaration.body.body,
+      external || (visible && exported),
+      ambient || declaration.declare,
+      api,
+    );
+  }
 }
 
 function lastJSDocBefore(sourceCode: SourceCode, node: Node): Comment | undefined {
   return sourceCode.getCommentsBefore(node).findLast(isJSDoc);
 }
 
-function isAmbient(node: Node, declarationFile: boolean): boolean {
-  if (declarationFile) return true;
-  let current: Node | null = node;
-  while (current !== null) {
-    if (current.type === "TSModuleDeclaration" && current.declare) return true;
-    current = current.parent;
-  }
-  return false;
-}
-
-function isPublicApi(member: Node, api: ReadonlySet<Node>, declarationFile: boolean): boolean {
+function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
   if (isPrivateMember(member)) return false;
   let previous = member;
   let current = member.parent;
   while (current !== null) {
     if (api.has(current)) return true;
     if (scopeBoundaryKinds.has(current.type) || isPrivateMember(current)) return false;
-    if (current.type === "TSModuleBlock" && !isAmbient(current, declarationFile)) return false;
+    if (current.type === "TSModuleBlock") return false;
     if (current.type === "ArrowFunctionExpression" && current.body === previous) return false;
     previous = current;
     current = current.parent;
@@ -193,10 +261,117 @@ function safetyCommentsFor(
   }
 }
 
+const lineBreakPattern = /[\n\r\u2028\u2029]/u;
+const blankPattern = /^\s*$/u;
+const isLineBreak = (char: string | undefined) => char !== undefined && lineBreakPattern.test(char);
+
+function lineStart(text: string, position: number): number {
+  let start = position;
+  while (start > 0 && !isLineBreak(text[start - 1])) start--;
+  return start;
+}
+
+function lineEnd(text: string, position: number): number {
+  let end = position;
+  while (end < text.length && !isLineBreak(text[end])) end++;
+  return end;
+}
+
+function nextLineStart(text: string, end: number): number {
+  if (text.startsWith("\r\n", end)) return end + 2;
+  return Math.min(end + 1, text.length);
+}
+
+function leadingSpace(text: string): number {
+  return text.length - text.trimStart().length;
+}
+
+function trailingSpace(text: string): number {
+  return text.length - text.trimEnd().length;
+}
+
+function hasText(node: Node | undefined): boolean {
+  return node?.type === "JSXText" && !blankPattern.test(node.value);
+}
+
+function separatesText(container: JSXExpressionContainer): boolean {
+  const parent = container.parent;
+  if (parent.type !== "JSXElement" && parent.type !== "JSXFragment") return false;
+  const index = parent.children.indexOf(container);
+  return hasText(parent.children[index - 1]) && hasText(parent.children[index + 1]);
+}
+
+function removal(text: string, start: number, end: number, jsx: boolean): Edit {
+  const first = lineStart(text, start);
+  const last = lineEnd(text, end);
+  const before = text.slice(first, start);
+  const after = text.slice(end, last);
+  if (blankPattern.test(before) && blankPattern.test(after)) {
+    return { start: first, end: nextLineStart(text, last), text: "" };
+  }
+  if (jsx) return { start, end, text: "" };
+  if (blankPattern.test(after)) return { start: start - trailingSpace(before), end, text: "" };
+  if (blankPattern.test(before)) return { start, end: end + leadingSpace(after), text: "" };
+  const from = start - trailingSpace(before);
+  const separator = lineBreakPattern.test(text.slice(from, end))
+    ? "\n"
+    : blankPattern.test(text[end] ?? "")
+      ? ""
+      : " ";
+  return { start: from, end, text: separator };
+}
+
+function commentRuns(text: string, reported: readonly Comment[]): Comment[][] {
+  const runs: Comment[][] = [];
+  for (const comment of reported) {
+    const run = runs.at(-1);
+    const previous = run?.at(-1);
+    if (run !== undefined && previous !== undefined) {
+      if (blankPattern.test(text.slice(previous.end, comment.start))) {
+        run.push(comment);
+        continue;
+      }
+    }
+    runs.push([comment]);
+  }
+  return runs;
+}
+
+function planEdits(
+  text: string,
+  comments: readonly Comment[],
+  reported: readonly Comment[],
+  containers: readonly JSXExpressionContainer[],
+): Map<Comment, Edit> {
+  const reportedSet = new Set(reported);
+  const edits = new Map<Comment, Edit>();
+  for (const run of commentRuns(text, reported)) {
+    const first = run[0];
+    const last = run.at(-1);
+    if (first === undefined || last === undefined) continue;
+    const container = containers.find(
+      (candidate) => candidate.start < first.start && last.end < candidate.end,
+    );
+    const inside = comments.filter(
+      (comment) =>
+        container !== undefined && container.start < comment.start && comment.end < container.end,
+    );
+    if (container !== undefined && inside.every((comment) => reportedSet.has(comment))) {
+      if (!separatesText(container)) {
+        edits.set(first, removal(text, container.start, container.end, true));
+      }
+      continue;
+    }
+    edits.set(first, removal(text, first.start, last.end, false));
+  }
+  return edits;
+}
+
 /** Ban code comments except tool directives, license headers, JSDoc on exported API, and SAFETY justifications. */
 export const noCommentsRule = defineRule({
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Disallow comments other than tool directives, license headers, JSDoc on exported API, and SAFETY justifications for type assertions.",
@@ -228,10 +403,9 @@ export const noCommentsRule = defineRule({
   },
   createOnce(context) {
     const matchersByOption = new Map<string, Matchers>();
-    const apiNodes = new Set<Node>();
     const members: Node[] = [];
     const assertions: TypeAssertion[] = [];
-    const localExports = new Set<string>();
+    const emptyContainers: JSXExpressionContainer[] = [];
 
     const addMember = (node: Node) => {
       members.push(node);
@@ -242,30 +416,12 @@ export const noCommentsRule = defineRule({
 
     return {
       before() {
-        apiNodes.clear();
         members.length = 0;
         assertions.length = 0;
-        localExports.clear();
+        emptyContainers.length = 0;
       },
-      ExportNamedDeclaration(node) {
-        if (node.declaration !== null) apiNodes.add(node);
-        if (node.source !== null) return;
-        for (const specifier of node.specifiers) {
-          if (specifier.local.type === "Identifier") localExports.add(specifier.local.name);
-        }
-      },
-      ExportDefaultDeclaration(node) {
-        apiNodes.add(node);
-        if (node.declaration.type === "Identifier") localExports.add(node.declaration.name);
-      },
-      TSExportAssignment(node) {
-        apiNodes.add(node);
-        if (node.expression.type === "Identifier") localExports.add(node.expression.name);
-      },
-      TSModuleBlock(node) {
-        for (const statement of node.body) {
-          if (declarationKinds.has(statement.type)) members.push(statement);
-        }
+      JSXExpressionContainer(node) {
+        if (node.expression.type === "JSXEmptyExpression") emptyContainers.push(node);
       },
       AccessorProperty: addMember,
       MethodDefinition: addMember,
@@ -289,21 +445,17 @@ export const noCommentsRule = defineRule({
         const matchers = matchersByOption.get(optionKey) ?? buildMatchers(option);
         matchersByOption.set(optionKey, matchers);
 
-        for (const statement of program.body) {
-          if (!declarationKinds.has(statement.type)) continue;
-          if (declaredNames(statement).some((name) => localExports.has(name))) {
-            apiNodes.add(statement);
-          }
-        }
+        const apiNodes = new Set<Node>();
+        const declarationFile = declarationFilePattern.test(context.filename);
+        collectApi(program.body, true, declarationFile, apiNodes);
 
         const allowed = new Set<number>();
         for (const node of apiNodes) {
           const doc = lastJSDocBefore(sourceCode, node);
           if (doc !== undefined) allowed.add(doc.start);
         }
-        const declarationFile = declarationFilePattern.test(context.filename);
         for (const member of members) {
-          if (!isPublicApi(member, apiNodes, declarationFile)) continue;
+          if (!isPublicApi(member, apiNodes)) continue;
           const doc = lastJSDocBefore(sourceCode, member);
           if (doc !== undefined) allowed.add(doc.start);
         }
@@ -314,13 +466,25 @@ export const noCommentsRule = defineRule({
         }
 
         const headerEnd = program.body[0]?.start ?? program.end;
-        for (const comment of sourceCode.getAllComments()) {
-          if (comment.type === "Shebang" || allowed.has(comment.start)) continue;
-          if (isLicenseHeader(comment, headerEnd)) continue;
+        const comments = sourceCode.getAllComments();
+        const reported = comments.filter((comment) => {
+          if (comment.type === "Shebang" || allowed.has(comment.start)) return false;
+          if (isLicenseHeader(comment, headerEnd)) return false;
           const text = commentText(comment);
-          if (directivePatterns.some((pattern) => pattern.test(text))) continue;
-          if (matchers.allow.some((pattern) => pattern.test(text))) continue;
-          context.report({ node: comment, messageId: "comment" });
+          if (directivePatterns.some((pattern) => pattern.test(text))) return false;
+          return !matchers.allow.some((pattern) => pattern.test(text));
+        });
+
+        const edits = planEdits(sourceCode.text, comments, reported, emptyContainers);
+        for (const comment of reported) {
+          const edit = edits.get(comment);
+          context.report({
+            node: comment,
+            messageId: "comment",
+            ...(edit === undefined
+              ? {}
+              : { fix: (fixer) => fixer.replaceTextRange([edit.start, edit.end], edit.text) }),
+          });
         }
       },
     };
