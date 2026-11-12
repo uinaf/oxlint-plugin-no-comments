@@ -28,7 +28,7 @@ published to npm and loaded by consumers through `jsPlugins`. The
 ```bash
 pnpm install --frozen-lockfile
 pnpm exec vp config --no-agent   # git hooks
-pnpm exec vp run verify          # format, lint, typecheck, pack, test
+pnpm exec vp run verify
 ```
 
 Oxlint's `RuleTester` reports 0-based columns.
