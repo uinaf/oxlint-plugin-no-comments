@@ -1,3 +1,5 @@
+![oxlint-plugin-no-comments — Oxlint rule that bans code comments.](https://uinaf.dev/og/banner/oxlint-plugin-no-comments.png)
+
 # @uinaf/oxlint-plugin-no-comments
 
 An Oxlint rule that bans code comments. Names, types, and tests carry intent;
