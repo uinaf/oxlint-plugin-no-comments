@@ -90,7 +90,6 @@ export default defineConfig({
       "quality/no-known-value-widening": "off",
       "quality/no-unknown-returns": "off",
       "quality/no-unsafe-dictionary-type": "off",
-      "typescript/array-type": "off",
     },
     overrides: [
       {

@@ -428,7 +428,7 @@ function rendersNothing(value: unknown): boolean {
 
 function shape(value: unknown): unknown {
   if (Array.isArray(value)) {
-    const items: unknown[] = [];
+    const items: Array<unknown> = [];
     for (const item of value.map(shape).filter((child) => !rendersNothing(child))) {
       const previous = items.at(-1);
       if (isJSXText(previous) && isJSXText(item)) {

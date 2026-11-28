@@ -14,7 +14,7 @@ interface Edit {
 }
 
 interface Matchers {
-  allow: readonly RegExp[];
+  allow: ReadonlyArray<RegExp>;
   safety: RegExp;
 }
 
@@ -57,14 +57,14 @@ const commentOwnerKinds = new Set([
   "VariableDeclaration",
 ]);
 
-function stringList(configured: unknown): string[] {
+function stringList(configured: unknown): Array<string> {
   if (!Array.isArray(configured)) return [];
   return configured.flatMap((item) =>
     typeof item === "string" && item.trim().length > 0 ? [item.trim()] : [],
   );
 }
 
-function safetyPattern(markers: readonly string[]): RegExp {
+function safetyPattern(markers: ReadonlyArray<string>): RegExp {
   const alternation = markers
     .map((marker) => marker.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`))
     .join("|");
@@ -115,7 +115,7 @@ function isPrivateMember(node: Node): boolean {
   return "key" in node && node.key.type === "PrivateIdentifier";
 }
 
-function boundNames(pattern: Node): string[] {
+function boundNames(pattern: Node): Array<string> {
   switch (pattern.type) {
     case "Identifier":
       return [pattern.name];
@@ -134,7 +134,7 @@ function boundNames(pattern: Node): string[] {
   }
 }
 
-function declaredNames(node: Node): string[] {
+function declaredNames(node: Node): Array<string> {
   if (node.type === "VariableDeclaration") {
     return node.declarations.flatMap((declarator) => boundNames(declarator.id));
   }
@@ -144,7 +144,7 @@ function declaredNames(node: Node): string[] {
   return id.type === "Identifier" ? [id.name] : [];
 }
 
-function localExportNames(statements: readonly Node[]): Set<string> {
+function localExportNames(statements: ReadonlyArray<Node>): Set<string> {
   const names = new Set<string>();
   for (const statement of statements) {
     if (statement.type === "ExportNamedDeclaration" && statement.source === null) {
@@ -172,7 +172,7 @@ function rootIdentifier(node: Node): string | null {
   return current.type === "Identifier" ? current.name : null;
 }
 
-function hasExportDeclarations(statements: readonly Node[]): boolean {
+function hasExportDeclarations(statements: ReadonlyArray<Node>): boolean {
   return statements.some(
     (statement) =>
       (statement.type === "ExportNamedDeclaration" && statement.declaration === null) ||
@@ -184,7 +184,7 @@ function hasExportDeclarations(statements: readonly Node[]): boolean {
 }
 
 function collectApi(
-  statements: readonly Node[],
+  statements: ReadonlyArray<Node>,
   visible: boolean,
   ambient: boolean,
   api: Set<Node>,
@@ -245,8 +245,8 @@ function safetyCommentsFor(
   sourceCode: SourceCode,
   assertion: TypeAssertion,
   pattern: RegExp,
-): Comment[] {
-  const found: Comment[] = [];
+): Array<Comment> {
+  const found: Array<Comment> = [];
   const collect = (owner: Node) => {
     for (const comment of sourceCode.getCommentsBefore(owner)) {
       if (comment.end <= assertion.start && pattern.test(comment.value)) found.push(comment);
@@ -301,7 +301,7 @@ interface Mark {
   render: string | null;
 }
 
-function renderChildren(text: string, from: number, to: number, marks: Mark[]): string {
+function renderChildren(text: string, from: number, to: number, marks: Array<Mark>): string {
   let output = "";
   let pending = "";
   let cursor = from;
@@ -323,8 +323,8 @@ function keepsRenderedText(text: string, parent: Node, planned: ReadonlyMap<Node
     from = Math.min(from, edit.start);
     to = Math.max(to, edit.end);
   }
-  const before: Mark[] = [];
-  const after: Mark[] = [];
+  const before: Array<Mark> = [];
+  const after: Array<Mark> = [];
   for (const child of parent.children) {
     if (child.type === "JSXText") continue;
     const render = child.type === "JSXExpressionContainer" ? "" : "\u0000";
@@ -355,8 +355,8 @@ function removal(text: string, start: number, end: number, jsx: boolean): Edit {
   return { start: from, end, text: separator };
 }
 
-function commentRuns(text: string, reported: readonly Comment[]): Comment[][] {
-  const runs: Comment[][] = [];
+function commentRuns(text: string, reported: ReadonlyArray<Comment>): Array<Array<Comment>> {
+  const runs: Array<Array<Comment>> = [];
   for (const comment of reported) {
     const run = runs.at(-1);
     const previous = run?.at(-1);
@@ -373,9 +373,9 @@ function commentRuns(text: string, reported: readonly Comment[]): Comment[][] {
 
 function planEdits(
   text: string,
-  comments: readonly Comment[],
-  reported: readonly Comment[],
-  containers: readonly JSXExpressionContainer[],
+  comments: ReadonlyArray<Comment>,
+  reported: ReadonlyArray<Comment>,
+  containers: ReadonlyArray<JSXExpressionContainer>,
 ): Map<Comment, Edit> {
   const reportedSet = new Set(reported);
   const sorted = containers.toSorted((a, b) => a.start - b.start);
@@ -458,9 +458,9 @@ export const noCommentsRule = defineRule({
   },
   createOnce(context) {
     const matchersByOption = new Map<string, Matchers>();
-    const members: Node[] = [];
-    const assertions: TypeAssertion[] = [];
-    const emptyContainers: JSXExpressionContainer[] = [];
+    const members: Array<Node> = [];
+    const assertions: Array<TypeAssertion> = [];
+    const emptyContainers: Array<JSXExpressionContainer> = [];
 
     const addMember = (node: Node) => {
       members.push(node);

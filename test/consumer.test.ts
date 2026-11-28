@@ -6,20 +6,20 @@ import { expect, test } from "vite-plus/test";
 interface Diagnostic {
   code: string;
   filename: string;
-  labels: { span: { line: number } }[];
+  labels: Array<{ span: { line: number } }>;
 }
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const oxlint = fileURLToPath(new URL("../node_modules/.bin/oxlint", import.meta.url));
 
-function lint(): Diagnostic[] {
+function lint(): Array<Diagnostic> {
   const result = spawnSync(
     oxlint,
     ["-c", "test/fixtures/consumer/.oxlintrc.json", "-f", "json", "test/fixtures/consumer"],
     { cwd: root, encoding: "utf8" },
   );
   expect(result.stderr).toBe("");
-  const report: { diagnostics: Diagnostic[] } = JSON.parse(result.stdout);
+  const report: { diagnostics: Array<Diagnostic> } = JSON.parse(result.stdout);
   return report.diagnostics;
 }
 
