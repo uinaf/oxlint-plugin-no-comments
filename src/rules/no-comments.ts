@@ -52,6 +52,8 @@ const scopeBoundaryKinds = new Set(["BlockStatement", "StaticBlock"]);
 
 const declarationFilePattern = /\.d\.[cm]?ts$/u;
 
+const objectLiteralPathKinds = new Set(["ObjectExpression", "Property", "TSSatisfiesExpression"]);
+
 const commentOwnerKinds = new Set([
   "ExpressionStatement",
   "PropertyDefinition",
@@ -224,6 +226,7 @@ function collectApi(
   visible: boolean,
   ambient: boolean,
   api: Set<Node>,
+  declarators: Set<Node>,
 ): void {
   const listed = localExportNames(statements);
   const exportContext = ambient && !hasExportDeclarations(statements);
@@ -252,6 +255,16 @@ function collectApi(
       api.add(statement);
     }
 
+    if (exported && declaration?.type === "VariableDeclaration") {
+      const all = explicit || exportContext;
+
+      for (const declarator of declaration.declarations) {
+        if (all || boundNames(declarator.id).some((name) => listed.has(name))) {
+          declarators.add(declarator);
+        }
+      }
+    }
+
     if (declaration?.type !== "TSModuleDeclaration" || declaration.body?.type !== "TSModuleBlock") {
       continue;
     }
@@ -262,6 +275,7 @@ function collectApi(
       external || (visible && exported),
       ambient || declaration.declare,
       api,
+      declarators,
     );
   }
 }
@@ -270,7 +284,11 @@ function lastJSDocBefore(sourceCode: SourceCode, node: Node): Comment | undefine
   return sourceCode.getCommentsBefore(node).findLast(isJSDoc);
 }
 
-function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
+function isPublicApi(
+  member: Node,
+  api: ReadonlySet<Node>,
+  declarators: ReadonlySet<Node>,
+): boolean {
   if (isPrivateMember(member)) {
     return false;
   }
@@ -287,6 +305,10 @@ function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
       return false;
     }
 
+    if (current.type === "VariableDeclarator" && !declarators.has(current)) {
+      return false;
+    }
+
     if (current.type === "TSModuleBlock") {
       return false;
     }
@@ -296,6 +318,36 @@ function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
     }
 
     previous = current;
+    current = current.parent;
+  }
+
+  return false;
+}
+
+function isExportedObjectProperty(
+  property: Node,
+  api: ReadonlySet<Node>,
+  declarators: ReadonlySet<Node>,
+): boolean {
+  let current = property.parent;
+
+  while (current !== null) {
+    if (api.has(current)) {
+      return true;
+    }
+
+    if (current.type === "VariableDeclarator") {
+      return declarators.has(current);
+    }
+
+    const passesType =
+      objectLiteralPathKinds.has(current.type) ||
+      (current.type === "TSAsExpression" && isConstAssertion(current));
+
+    if (!passesType) {
+      return false;
+    }
+
     current = current.parent;
   }
 
@@ -603,6 +655,7 @@ export const noCommentsRule = defineRule({
   createOnce(context) {
     const matchersByOption = new Map<string, Matchers>();
     const members: Array<Node> = [];
+    const properties: Array<Node> = [];
     const assertions: Array<TypeAssertion> = [];
     const emptyContainers: Array<JSXExpressionContainer> = [];
 
@@ -619,6 +672,7 @@ export const noCommentsRule = defineRule({
     return {
       before() {
         members.length = 0;
+        properties.length = 0;
         assertions.length = 0;
         emptyContainers.length = 0;
       },
@@ -626,6 +680,9 @@ export const noCommentsRule = defineRule({
         if (node.expression.type === "JSXEmptyExpression") {
           emptyContainers.push(node);
         }
+      },
+      Property(node) {
+        properties.push(node);
       },
       AccessorProperty: addMember,
       MethodDefinition: addMember,
@@ -650,8 +707,9 @@ export const noCommentsRule = defineRule({
         matchersByOption.set(optionKey, matchers);
 
         const apiNodes = new Set<Node>();
+        const exportedDeclarators = new Set<Node>();
         const declarationFile = declarationFilePattern.test(context.filename);
-        collectApi(program.body, true, declarationFile, apiNodes);
+        collectApi(program.body, true, declarationFile, apiNodes, exportedDeclarators);
 
         const allowed = new Set<number>();
 
@@ -664,11 +722,23 @@ export const noCommentsRule = defineRule({
         }
 
         for (const member of members) {
-          if (!isPublicApi(member, apiNodes)) {
+          if (!isPublicApi(member, apiNodes, exportedDeclarators)) {
             continue;
           }
 
           const doc = lastJSDocBefore(sourceCode, member);
+
+          if (doc !== undefined) {
+            allowed.add(doc.start);
+          }
+        }
+
+        for (const property of properties) {
+          if (!isExportedObjectProperty(property, apiNodes, exportedDeclarators)) {
+            continue;
+          }
+
+          const doc = lastJSDocBefore(sourceCode, property);
 
           if (doc !== undefined) {
             allowed.add(doc.start);
