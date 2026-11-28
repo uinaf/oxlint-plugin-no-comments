@@ -80,16 +80,28 @@ export default defineConfig({
       "vite-plus/prefer-vite-plus-imports": "error",
       "uinaf/no-comments": "off",
       "uinaf-self/no-comments": "error",
-      "anti-slop/no-runtime-typeof": "off",
-      "anti-slop/no-unknown-parameters": "off",
-      "quality/no-known-value-widening": "off",
-      "quality/no-unknown-returns": "off",
-      "quality/no-unsafe-dictionary-type": "off",
     },
     overrides: [
       {
         files: ["src/**", "test/no-comments.test.ts"],
         rules: { "vite-plus/prefer-vite-plus-imports": "off" },
+      },
+      {
+        files: ["src/rules/no-comments.ts"],
+        rules: {
+          "anti-slop/no-runtime-typeof": "off",
+          "anti-slop/no-unknown-parameters": "off",
+        },
+      },
+      {
+        files: ["test/no-comments.test.ts"],
+        rules: {
+          "anti-slop/no-runtime-typeof": "off",
+          "anti-slop/no-unknown-parameters": "off",
+          "quality/no-known-value-widening": "off",
+          "quality/no-unknown-returns": "off",
+          "quality/no-unsafe-dictionary-type": "off",
+        },
       },
     ],
     options: { typeAware: true, typeCheck: true },
