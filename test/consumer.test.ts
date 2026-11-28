@@ -18,8 +18,10 @@ function lint(): Array<Diagnostic> {
     ["-c", "test/fixtures/consumer/.oxlintrc.json", "-f", "json", "test/fixtures/consumer"],
     { cwd: root, encoding: "utf8" },
   );
+
   expect(result.stderr).toBe("");
   const report: { diagnostics: Array<Diagnostic> } = JSON.parse(result.stdout);
+
   return report.diagnostics;
 }
 
@@ -29,10 +31,12 @@ test("oxlint loads the published entry through jsPlugins and reports only banned
     diagnostic.labels[0]?.span.line,
     diagnostic.code,
   ]);
+
   const banned = [1, 4, 6, 11, 12, 16, 18].map((line) => [
     "test/fixtures/consumer/banned.ts",
     line,
     "uinaf(no-comments)",
   ]);
+
   expect(found).toEqual(banned);
 });

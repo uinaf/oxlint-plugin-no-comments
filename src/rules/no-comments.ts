@@ -3,8 +3,11 @@ import { defineRule } from "@oxlint/plugins";
 import type { ESTree, SourceCode } from "@oxlint/plugins";
 
 type Comment = ESTree.Comment;
+
 type Node = ESTree.Node;
+
 type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
+
 type JSXExpressionContainer = ESTree.JSXExpressionContainer;
 
 interface Edit {
@@ -61,6 +64,7 @@ function stringList(configured: unknown): Array<string> {
   if (!Array.isArray(configured)) {
     return [];
   }
+
   return configured.flatMap((item) =>
     typeof item === "string" && item.trim().length > 0 ? [item.trim()] : [],
   );
@@ -70,6 +74,7 @@ function safetyPattern(markers: ReadonlyArray<string>): RegExp {
   const alternation = markers
     .map((marker) => marker.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`))
     .join("|");
+
   return new RegExp(String.raw`(?:^|[^\p{L}\p{N}_])(?:${alternation})\s*:\s*\S`, "u");
 }
 
@@ -77,6 +82,7 @@ function buildMatchers(option: unknown): Matchers {
   const isObject = typeof option === "object" && option !== null;
   const allow = isObject && "allow" in option ? stringList(option.allow) : [];
   const markers = isObject && "safetyMarkers" in option ? stringList(option.safetyMarkers) : [];
+
   return {
     allow: allow.map((source) => new RegExp(source, "u")),
     safety: safetyPattern(markers.length > 0 ? markers : DEFAULT_SAFETY_MARKERS),
@@ -87,6 +93,7 @@ function commentText(comment: Comment): string {
   if (comment.type !== "Block") {
     return comment.value.trim();
   }
+
   return comment.value
     .split("\n")
     .map((line) => line.replace(/^\s*\**\s*/u, ""))
@@ -102,6 +109,7 @@ function isLicenseHeader(comment: Comment, headerEnd: number): boolean {
   if (comment.end > headerEnd) {
     return false;
   }
+
   return (
     (comment.type === "Block" && comment.value.startsWith("!")) ||
     licensePattern.test(comment.value)
@@ -120,6 +128,7 @@ function isPrivateMember(node: Node): boolean {
   if ("accessibility" in node && node.accessibility === "private") {
     return true;
   }
+
   return "key" in node && node.key.type === "PrivateIdentifier";
 }
 
@@ -146,18 +155,23 @@ function declaredNames(node: Node): Array<string> {
   if (node.type === "VariableDeclaration") {
     return node.declarations.flatMap((declarator) => boundNames(declarator.id));
   }
+
   if (!("id" in node) || node.id === null) {
     return [];
   }
+
   let id: Node = node.id;
+
   while (id.type === "TSQualifiedName") {
     id = id.left;
   }
+
   return id.type === "Identifier" ? [id.name] : [];
 }
 
 function localExportNames(statements: ReadonlyArray<Node>): Set<string> {
   const names = new Set<string>();
+
   for (const statement of statements) {
     if (statement.type === "ExportNamedDeclaration" && statement.source === null) {
       for (const specifier of statement.specifiers) {
@@ -166,25 +180,31 @@ function localExportNames(statements: ReadonlyArray<Node>): Set<string> {
         }
       }
     }
+
     const target =
       statement.type === "ExportDefaultDeclaration"
         ? statement.declaration
         : statement.type === "TSExportAssignment"
           ? statement.expression
           : null;
+
     const root = target === null ? null : rootIdentifier(target);
+
     if (root !== null) {
       names.add(root);
     }
   }
+
   return names;
 }
 
 function rootIdentifier(node: Node): string | null {
   let current = node;
+
   while (current.type === "MemberExpression" || current.type === "TSQualifiedName") {
     current = current.type === "MemberExpression" ? current.object : current.left;
   }
+
   return current.type === "Identifier" ? current.name : null;
 }
 
@@ -207,10 +227,12 @@ function collectApi(
 ): void {
   const listed = localExportNames(statements);
   const exportContext = ambient && !hasExportDeclarations(statements);
+
   for (const statement of statements) {
     let declaration: Node | null = null;
     let explicit = false;
     let implicit = false;
+
     if (statement.type === "ExportNamedDeclaration") {
       declaration = statement.declaration;
       explicit = declaration !== null;
@@ -223,13 +245,17 @@ function collectApi(
       declaration = statement;
       implicit = exportContext || declaredNames(statement).some((name) => listed.has(name));
     }
+
     const exported = explicit || (visible && implicit);
+
     if (exported) {
       api.add(statement);
     }
+
     if (declaration?.type !== "TSModuleDeclaration" || declaration.body?.type !== "TSModuleBlock") {
       continue;
     }
+
     const external = declaration.global || declaration.id.type === "Literal";
     collectApi(
       declaration.body.body,
@@ -248,24 +274,31 @@ function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
   if (isPrivateMember(member)) {
     return false;
   }
+
   let previous = member;
   let current = member.parent;
+
   while (current !== null) {
     if (api.has(current)) {
       return true;
     }
+
     if (scopeBoundaryKinds.has(current.type) || isPrivateMember(current)) {
       return false;
     }
+
     if (current.type === "TSModuleBlock") {
       return false;
     }
+
     if (current.type === "ArrowFunctionExpression" && current.body === previous) {
       return false;
     }
+
     previous = current;
     current = current.parent;
   }
+
   return false;
 }
 
@@ -275,6 +308,7 @@ function safetyCommentsFor(
   pattern: RegExp,
 ): Array<Comment> {
   const found: Array<Comment> = [];
+
   const collect = (owner: Node) => {
     for (const comment of sourceCode.getCommentsBefore(owner)) {
       if (comment.end <= assertion.start && pattern.test(comment.value)) {
@@ -282,22 +316,29 @@ function safetyCommentsFor(
       }
     }
   };
+
   let current: Node = assertion;
+
   while (true) {
     collect(current);
+
     if (commentOwnerKinds.has(current.type)) {
       const exportDeclaration = current.parent;
+
       if (
         exportDeclaration?.type === "ExportNamedDeclaration" &&
         exportDeclaration.declaration === current
       ) {
         collect(exportDeclaration);
       }
+
       return found;
     }
+
     if (current.parent === null || current.parent.type === "Program") {
       return found;
     }
+
     current = current.parent;
   }
 }
@@ -314,14 +355,17 @@ function nextLineStart(text: string, end: number): number {
   if (text.startsWith("\r\n", end)) {
     return end + 2;
   }
+
   return Math.min(end + 1, text.length);
 }
 
 function renderedJSXText(value: string): string {
   const lines = value.split(/\r\n|[\n\r]/u);
+
   return lines
     .map((line, index) => {
       const start = index > 0 ? line.replace(/^[ \t]+/u, "") : line;
+
       return index < lines.length - 1 ? start.replace(/[ \t]+$/u, "") : start;
     })
     .filter((line) => line.length > 0)
@@ -339,15 +383,19 @@ function renderChildren(text: string, from: number, to: number, marks: Array<Mar
   let output = "";
   let pending = "";
   let cursor = from;
+
   for (const mark of marks.toSorted((a, b) => a.start - b.start)) {
     pending += text.slice(cursor, Math.max(cursor, mark.start)) + mark.text;
     cursor = Math.max(cursor, mark.end);
+
     if (mark.render === null) {
       continue;
     }
+
     output += renderedJSXText(pending) + mark.render;
     pending = "";
   }
+
   return output + renderedJSXText(pending + text.slice(cursor, to));
 }
 
@@ -355,71 +403,91 @@ function keepsRenderedText(text: string, parent: Node, planned: ReadonlyMap<Node
   if (parent.type !== "JSXElement" && parent.type !== "JSXFragment") {
     return true;
   }
+
   let from = parent.children[0]?.start ?? parent.start;
   let to = parent.children.at(-1)?.end ?? parent.end;
+
   for (const edit of planned.values()) {
     from = Math.min(from, edit.start);
     to = Math.max(to, edit.end);
   }
+
   const before: Array<Mark> = [];
   const after: Array<Mark> = [];
+
   for (const child of parent.children) {
     if (child.type === "JSXText") {
       continue;
     }
+
     const render = child.type === "JSXExpressionContainer" ? "" : "\u0000";
     const separator = { start: child.start, end: child.end, text: "", render };
     before.push(separator);
     const edit = planned.get(child);
     after.push(edit === undefined ? separator : { ...edit, render: null });
   }
+
   return renderChildren(text, from, to, before) === renderChildren(text, from, to, after);
 }
 
 function removal(text: string, start: number, end: number, jsx: boolean): Edit {
   let from = start;
+
   while (isInlineSpace(text[from - 1])) {
     from--;
   }
+
   let to = end;
+
   while (isInlineSpace(text[to])) {
     to++;
   }
+
   const blankBefore = from === 0 || isLineBreak(text[from - 1]);
   const blankAfter = to === text.length || isLineBreak(text[to]);
+
   if (blankBefore && blankAfter) {
     return { start: from, end: nextLineStart(text, to), text: "" };
   }
+
   if (jsx) {
     return { start, end, text: "" };
   }
+
   if (blankAfter) {
     return { start: from, end, text: "" };
   }
+
   if (blankBefore) {
     return { start, end: to, text: "" };
   }
+
   const separator = lineBreakPattern.test(text.slice(from, end))
     ? "\n"
     : isInlineSpace(text[end])
       ? ""
       : " ";
+
   return { start: from, end, text: separator };
 }
 
 function commentRuns(text: string, reported: ReadonlyArray<Comment>): Array<Array<Comment>> {
   const runs: Array<Array<Comment>> = [];
+
   for (const comment of reported) {
     const run = runs.at(-1);
     const previous = run?.at(-1);
+
     if (run !== undefined && previous !== undefined) {
       if (blankPattern.test(text.slice(previous.end, comment.start))) {
         run.push(comment);
         continue;
       }
     }
+
     runs.push([comment]);
   }
+
   return runs;
 }
 
@@ -433,11 +501,14 @@ function planEdits(
   const sorted = containers.toSorted((a, b) => a.start - b.start);
   const keepsComment = new Set<JSXExpressionContainer>();
   let index = 0;
+
   for (const comment of comments) {
     let container = sorted[index];
+
     while (container !== undefined && container.end <= comment.start) {
       container = sorted[++index];
     }
+
     if (container !== undefined && container.start < comment.start && !reportedSet.has(comment)) {
       keepsComment.add(container);
     }
@@ -447,20 +518,26 @@ function planEdits(
   const byParent = new Map<Node, Map<Node, Edit>>();
   const owners = new Map<Node, Comment>();
   index = 0;
+
   for (const run of commentRuns(text, reported)) {
     const first = run[0];
     const last = run.at(-1);
+
     if (first === undefined || last === undefined) {
       continue;
     }
+
     let candidate = sorted[index];
+
     while (candidate !== undefined && candidate.end <= first.start) {
       candidate = sorted[++index];
     }
+
     const container =
       candidate !== undefined && candidate.start < first.start && last.end < candidate.end
         ? candidate
         : undefined;
+
     if (container !== undefined && !keepsComment.has(container)) {
       const planned = byParent.get(container.parent) ?? new Map<Node, Edit>();
       planned.set(container, removal(text, container.start, container.end, true));
@@ -468,19 +545,24 @@ function planEdits(
       owners.set(container, first);
       continue;
     }
+
     edits.set(first, removal(text, first.start, last.end, false));
   }
+
   for (const [parent, planned] of byParent) {
     if (!keepsRenderedText(text, parent, planned)) {
       continue;
     }
+
     for (const [container, edit] of planned) {
       const owner = owners.get(container);
+
       if (owner !== undefined) {
         edits.set(owner, edit);
       }
     }
   }
+
   return edits;
 }
 
@@ -527,6 +609,7 @@ export const noCommentsRule = defineRule({
     const addMember = (node: Node) => {
       members.push(node);
     };
+
     const addAssertion = (node: TypeAssertion) => {
       if (!isConstAssertion(node)) {
         assertions.push(node);
@@ -571,21 +654,27 @@ export const noCommentsRule = defineRule({
         collectApi(program.body, true, declarationFile, apiNodes);
 
         const allowed = new Set<number>();
+
         for (const node of apiNodes) {
           const doc = lastJSDocBefore(sourceCode, node);
+
           if (doc !== undefined) {
             allowed.add(doc.start);
           }
         }
+
         for (const member of members) {
           if (!isPublicApi(member, apiNodes)) {
             continue;
           }
+
           const doc = lastJSDocBefore(sourceCode, member);
+
           if (doc !== undefined) {
             allowed.add(doc.start);
           }
         }
+
         for (const assertion of assertions) {
           for (const comment of safetyCommentsFor(sourceCode, assertion, matchers.safety)) {
             allowed.add(comment.start);
@@ -594,21 +683,27 @@ export const noCommentsRule = defineRule({
 
         const headerEnd = program.body[0]?.start ?? program.end;
         const comments = sourceCode.getAllComments();
+
         const reported = comments.filter((comment) => {
           if (comment.type === "Shebang" || allowed.has(comment.start)) {
             return false;
           }
+
           if (isLicenseHeader(comment, headerEnd)) {
             return false;
           }
+
           const text = commentText(comment);
+
           if (directivePatterns.some((pattern) => pattern.test(text))) {
             return false;
           }
+
           return !matchers.allow.some((pattern) => pattern.test(text));
         });
 
         const edits = planEdits(sourceCode.text, comments, reported, emptyContainers);
+
         for (const comment of reported) {
           const edit = edits.get(comment);
           context.report({
