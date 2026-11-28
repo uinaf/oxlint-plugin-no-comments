@@ -83,7 +83,6 @@ export default defineConfig({
       "anti-slop/no-runtime-typeof": "off",
       "anti-slop/no-shape-in-symbol-names": "off",
       "anti-slop/no-unknown-parameters": "off",
-      "no-only-tests/no-only-tests": "off",
       "quality/no-conditional-empty-object-spread": "off",
       "quality/no-known-value-widening": "off",
       "quality/no-unknown-returns": "off",

@@ -8,8 +8,6 @@ RuleTester.describe = describe;
 
 RuleTester.it = it;
 
-RuleTester.itOnly = it.only;
-
 const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "tsx" } } });
 const comment = { messageId: "comment" };
 
