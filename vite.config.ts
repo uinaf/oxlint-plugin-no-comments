@@ -1,3 +1,4 @@
+import uinaf, { env, ignorePatterns } from "@uinaf/oxlint-config/vite-plus";
 import { defineConfig } from "vite-plus";
 
 const stableShell = {
@@ -68,14 +69,28 @@ export default defineConfig({
   },
 
   lint: {
-    ignorePatterns: ["dist/**", "test/fixtures/**"],
+    extends: [uinaf],
+    env,
+    ignorePatterns: [...ignorePatterns, "dist/**", "test/fixtures/**"],
     jsPlugins: [
       { name: "vite-plus", specifier: "vite-plus/oxlint-plugin" },
-      { name: "uinaf", specifier: "./src/index.ts" },
+      { name: "uinaf-self", specifier: "./src/index.ts" },
     ],
     rules: {
       "vite-plus/prefer-vite-plus-imports": "error",
-      "uinaf/no-comments": "error",
+      "uinaf/no-comments": "off",
+      "uinaf-self/no-comments": "error",
+      "anti-slop/no-runtime-typeof": "off",
+      "anti-slop/no-shape-in-symbol-names": "off",
+      "anti-slop/no-unknown-parameters": "off",
+      "anti-slop/require-readable-spacing": "off",
+      curly: "off",
+      "no-only-tests/no-only-tests": "off",
+      "quality/no-conditional-empty-object-spread": "off",
+      "quality/no-known-value-widening": "off",
+      "quality/no-unknown-returns": "off",
+      "quality/no-unsafe-dictionary-type": "off",
+      "typescript/array-type": "off",
     },
     overrides: [
       {
