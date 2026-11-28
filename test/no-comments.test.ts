@@ -5,8 +5,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { noCommentsRule } from "../src/rules/no-comments.ts";
 
 RuleTester.describe = describe;
+
 RuleTester.it = it;
-RuleTester.itOnly = it.only;
 
 const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "tsx" } } });
 const comment = { messageId: "comment" };
@@ -393,9 +393,11 @@ tester.run("uinaf/no-comments autofix", noCommentsRule, {
 
 function jsxText(value: string): string {
   const lines = value.split(/\r\n|[\n\r]/u);
+
   return lines
     .map((line, index) => {
       const start = index > 0 ? line.replace(/^[ \t]+/u, "") : line;
+
       return index < lines.length - 1 ? start.replace(/[ \t]+$/u, "") : start;
     })
     .filter((line) => line.length > 0)
@@ -414,8 +416,14 @@ function isJSXText(value: unknown): value is { type: "JSXText"; value: string } 
 }
 
 function rendersNothing(value: unknown): boolean {
-  if (typeof value !== "object" || value === null || !("type" in value)) return false;
-  if (value.type === "JSXText") return "value" in value && value.value === "";
+  if (typeof value !== "object" || value === null || !("type" in value)) {
+    return false;
+  }
+
+  if (value.type === "JSXText") {
+    return "value" in value && value.value === "";
+  }
+
   return (
     value.type === "JSXExpressionContainer" &&
     "expression" in value &&
@@ -426,35 +434,49 @@ function rendersNothing(value: unknown): boolean {
   );
 }
 
-function shape(value: unknown): unknown {
+function comparable(value: unknown): unknown {
   if (Array.isArray(value)) {
-    const items: unknown[] = [];
-    for (const item of value.map(shape).filter((child) => !rendersNothing(child))) {
+    const items: Array<unknown> = [];
+
+    for (const item of value.map(comparable).filter((child) => !rendersNothing(child))) {
       const previous = items.at(-1);
+
       if (isJSXText(previous) && isJSXText(item)) {
         items[items.length - 1] = { type: "JSXText", value: previous.value + item.value };
       } else {
         items.push(item);
       }
     }
+
     return items;
   }
-  if (typeof value !== "object" || value === null) return value;
-  const result: Record<string, unknown> = {};
-  for (const [key, child] of Object.entries(value)) {
-    if (["start", "end", "range", "loc", "raw"].includes(key)) continue;
-    result[key] = shape(child);
+
+  if (typeof value !== "object" || value === null) {
+    return value;
   }
+
+  const result: Record<string, unknown> = {};
+
+  for (const [key, child] of Object.entries(value)) {
+    if (["start", "end", "range", "loc", "raw"].includes(key)) {
+      continue;
+    }
+
+    result[key] = comparable(child);
+  }
+
   if (result.type === "JSXText" && typeof result.value === "string") {
     result.value = jsxText(result.value);
   }
+
   return result;
 }
 
 function program(code: string): unknown {
   const result = parseSync("fixture.tsx", code);
   expect(result.errors).toEqual([]);
-  return shape(result.program);
+
+  return comparable(result.program);
 }
 
 describe("uinaf/no-comments autofix keeps the program", () => {
