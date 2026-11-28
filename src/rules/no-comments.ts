@@ -706,13 +706,16 @@ export const noCommentsRule = defineRule({
 
         for (const comment of reported) {
           const edit = edits.get(comment);
-          context.report({
-            node: comment,
-            messageId: "comment",
-            ...(edit === undefined
-              ? {}
-              : { fix: (fixer) => fixer.replaceTextRange([edit.start, edit.end], edit.text) }),
-          });
+
+          if (edit === undefined) {
+            context.report({ node: comment, messageId: "comment" });
+          } else {
+            context.report({
+              node: comment,
+              messageId: "comment",
+              fix: (fixer) => fixer.replaceTextRange([edit.start, edit.end], edit.text),
+            });
+          }
         }
       },
     };
