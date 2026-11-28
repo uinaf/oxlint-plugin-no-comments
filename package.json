@@ -38,7 +38,7 @@
   "devDependencies": {
     "@oxlint/plugins": "1.94.0",
     "@types/node": "^26.6.6",
-    "@uinaf/oxlint-config": "1.0.0",
+    "@uinaf/oxlint-config": "1.0.3",
     "oxlint": "1.94.0",
     "vite": "catalog:",
     "vite-plus": "catalog:"
