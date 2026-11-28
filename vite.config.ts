@@ -81,7 +81,6 @@ export default defineConfig({
       "uinaf/no-comments": "off",
       "uinaf-self/no-comments": "error",
       "anti-slop/no-runtime-typeof": "off",
-      "anti-slop/no-shape-in-symbol-names": "off",
       "anti-slop/no-unknown-parameters": "off",
       "quality/no-known-value-widening": "off",
       "quality/no-unknown-returns": "off",

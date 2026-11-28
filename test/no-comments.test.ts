@@ -434,11 +434,11 @@ function rendersNothing(value: unknown): boolean {
   );
 }
 
-function shape(value: unknown): unknown {
+function comparable(value: unknown): unknown {
   if (Array.isArray(value)) {
     const items: Array<unknown> = [];
 
-    for (const item of value.map(shape).filter((child) => !rendersNothing(child))) {
+    for (const item of value.map(comparable).filter((child) => !rendersNothing(child))) {
       const previous = items.at(-1);
 
       if (isJSXText(previous) && isJSXText(item)) {
@@ -462,7 +462,7 @@ function shape(value: unknown): unknown {
       continue;
     }
 
-    result[key] = shape(child);
+    result[key] = comparable(child);
   }
 
   if (result.type === "JSXText" && typeof result.value === "string") {
@@ -476,7 +476,7 @@ function program(code: string): unknown {
   const result = parseSync("fixture.tsx", code);
   expect(result.errors).toEqual([]);
 
-  return shape(result.program);
+  return comparable(result.program);
 }
 
 describe("uinaf/no-comments autofix keeps the program", () => {
