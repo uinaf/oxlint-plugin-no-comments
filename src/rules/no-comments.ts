@@ -33,6 +33,11 @@ const directivePatterns = [
   /^[#@]__(?:PURE|NO_SIDE_EFFECTS)__$/u,
   /^@vite-ignore$/u,
   /^@vitest-environment\s/u,
+  /^@jsx(?:Frag|ImportSource|Runtime)?\s+\S/u,
+  /^(?:webpack|turbopack)[A-Z][A-Za-z]*\s*:/u,
+  /^gitleaks:allow(?:\s|$)/u,
+  /^trufflehog:ignore(?:\s|$)/u,
+  /^pragma:\s*allowlist\s+(?:nextline\s+)?secret(?:\s|$)/u,
 ];
 
 const licensePattern = /@license(?![\w-])|SPDX-(?:License-Identifier|FileCopyrightText):/u;

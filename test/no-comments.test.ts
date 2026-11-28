@@ -37,6 +37,16 @@ tester.run("uinaf/no-comments tool directives", noCommentsRule, {
     "/*\n * istanbul ignore next\n */\nfunction f() {}",
     "/* eslint-disable\n  no-console,\n  no-alert\n*/\nconsole.log(1);",
     "#!/usr/bin/env node\nconsole.log(1);",
+    'const t = "phc_x"; // gitleaks:allow',
+    'const t = "x"; // trufflehog:ignore',
+    'const t = "x"; // pragma: allowlist secret',
+    '// pragma: allowlist nextline secret\nconst t = "x";',
+    '/** @jsxImportSource theme-ui */\nimport { A } from "./a";\nconst B = () => <div />;',
+    '/** @jsx h */\n/** @jsxFrag Fragment */\nimport { A } from "./a";\nconst B = () => <></>;',
+    '/**\n * @jsxRuntime classic\n * @jsx jsx\n */\nimport { A } from "./a";\nconst B = () => <div />;',
+    "await import(/* webpackIgnore: true */ url);",
+    'await import(/* webpackChunkName: "a", webpackPrefetch: true */ "./a");',
+    "await import(/* turbopackIgnore: true */ url);",
   ],
   invalid: [
     { code: "// eslint disables are fine here\nf();", output: "f();", errors: [comment] },
@@ -51,6 +61,9 @@ tester.run("uinaf/no-comments tool directives", noCommentsRule, {
       errors: [comment],
     },
     { code: "// @vitest-environment-ish\nf();", output: "f();", errors: [comment] },
+    { code: "// gitleaks:allowed later\nf();", output: "f();", errors: [comment] },
+    { code: "// @jsxish notes\nf();", output: "f();", errors: [comment] },
+    { code: "// webpack: bundles this\nf();", output: "f();", errors: [comment] },
     {
       code: "/**\n * Prose first.\n * @vitest-environment node\n */\nf();",
       output: "f();",
@@ -302,15 +315,15 @@ tester.run("uinaf/no-comments SAFETY justifications", noCommentsRule, {
 tester.run("uinaf/no-comments allow option", noCommentsRule, {
   valid: [
     {
-      code: 'await import(/* webpackChunkName: "page" */ "./page");',
-      options: [{ allow: ["^webpackChunkName:"] }],
+      code: "const a = 1; // nosemgrep: rule-id",
+      options: [{ allow: ["^nosemgrep(?::|$)"] }],
     },
   ],
   invalid: [
     {
-      code: 'await import(/* webpackMode: "lazy" */ "./page");',
-      output: 'await import( "./page");',
-      options: [{ allow: ["^webpackChunkName:"] }],
+      code: "const a = 1; // nosemgrepish",
+      output: "const a = 1;",
+      options: [{ allow: ["^nosemgrep(?::|$)"] }],
       errors: [comment],
     },
   ],

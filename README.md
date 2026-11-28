@@ -42,12 +42,12 @@ lint: {
 
 ## What stays
 
-| Kind            | Allowed                                                                                                                                                                                                                                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tool directives | `eslint-disable*`, `eslint-enable*`, `oxlint-disable*`, `oxlint-enable*`, `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, `@ts-check`, `/// <reference …>`, `prettier-ignore`, `istanbul`/`c8`/`v8 ignore`, `node:coverage`, `@__PURE__`, `@__NO_SIDE_EFFECTS__`, `@vite-ignore`, `@vitest-environment` |
-| License headers | `/*! … */`, `@license`, or `SPDX-*` before the first statement                                                                                                                                                                                                                                           |
-| API docs        | The last JSDoc block before a declaration TypeScript exports, or before a public member of an exported class, interface, type, enum, or object literal. This counts implicit exports in `.d.ts` files, `declare module`, and `declare global`                                                            |
-| Lint-required   | `SAFETY:` comments that anti-slop's `require-safety-comment-for-type-assertion` accepts for a non-`const` type assertion                                                                                                                                                                                 |
+| Kind            | Allowed                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tool directives | `eslint-disable*`, `eslint-enable*`, `oxlint-disable*`, `oxlint-enable*`, `@ts-expect-error`, `@ts-ignore`, `@ts-nocheck`, `@ts-check`, `/// <reference …>`, `prettier-ignore`, `istanbul`/`c8`/`v8 ignore`, `node:coverage`, `@__PURE__`, `@__NO_SIDE_EFFECTS__`, `@vite-ignore`, `@vitest-environment`, `@jsx`, `@jsxFrag`, `@jsxImportSource`, `@jsxRuntime`, `webpack*:` and `turbopack*:` magic comments, `gitleaks:allow`, `trufflehog:ignore`, `pragma: allowlist secret` |
+| License headers | `/*! … */`, `@license`, or `SPDX-*` before the first statement                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| API docs        | The last JSDoc block before a declaration TypeScript exports, or before a public member of an exported class, interface, type, enum, or object literal. This counts implicit exports in `.d.ts` files, `declare module`, and `declare global`                                                                                                                                                                                                                                    |
+| Lint-required   | `SAFETY:` comments that anti-slop's `require-safety-comment-for-type-assertion` accepts for a non-`const` type assertion                                                                                                                                                                                                                                                                                                                                                         |
 
 Everything else is reported, including `TODO`, JSX comments, JSDoc on
 internal code, and `SAFETY:` comments with no assertion to justify.
@@ -60,7 +60,7 @@ between two runs of JSX text.
 ## Options
 
 ```json
-["error", { "allow": ["^webpackChunkName:"], "safetyMarkers": ["SAFETY"] }]
+["error", { "allow": ["^nosemgrep(?::|$)"], "safetyMarkers": ["SAFETY"] }]
 ```
 
 - `allow`: regular expressions for extra directives. Each one is tested
