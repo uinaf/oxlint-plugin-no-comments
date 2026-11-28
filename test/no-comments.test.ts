@@ -198,6 +198,16 @@ tester.run("uinaf/no-comments JSDoc on exported API", noCommentsRule, {
       errors: [comment],
     },
     {
+      code: "const internal = { /** Internal. */ secret: 1 }, api = {};\nexport { api };",
+      output: "const internal = { secret: 1 }, api = {};\nexport { api };",
+      errors: [comment],
+    },
+    {
+      code: "const Internal = class { /** Run. */ run() {} }, api = 1;\nexport { api };",
+      output: "const Internal = class { run() {} }, api = 1;\nexport { api };",
+      errors: [comment],
+    },
+    {
       code: "export const api = build({ /** Option. */ retries: 1 });",
       output: "export const api = build({ retries: 1 });",
       errors: [comment],
