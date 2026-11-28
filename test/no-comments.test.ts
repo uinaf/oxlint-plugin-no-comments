@@ -414,8 +414,12 @@ function isJSXText(value: unknown): value is { type: "JSXText"; value: string } 
 }
 
 function rendersNothing(value: unknown): boolean {
-  if (typeof value !== "object" || value === null || !("type" in value)) return false;
-  if (value.type === "JSXText") return "value" in value && value.value === "";
+  if (typeof value !== "object" || value === null || !("type" in value)) {
+    return false;
+  }
+  if (value.type === "JSXText") {
+    return "value" in value && value.value === "";
+  }
   return (
     value.type === "JSXExpressionContainer" &&
     "expression" in value &&
@@ -439,10 +443,14 @@ function shape(value: unknown): unknown {
     }
     return items;
   }
-  if (typeof value !== "object" || value === null) return value;
+  if (typeof value !== "object" || value === null) {
+    return value;
+  }
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
-    if (["start", "end", "range", "loc", "raw"].includes(key)) continue;
+    if (["start", "end", "range", "loc", "raw"].includes(key)) {
+      continue;
+    }
     result[key] = shape(child);
   }
   if (result.type === "JSXText" && typeof result.value === "string") {

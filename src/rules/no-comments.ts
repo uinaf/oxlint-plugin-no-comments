@@ -58,7 +58,9 @@ const commentOwnerKinds = new Set([
 ]);
 
 function stringList(configured: unknown): Array<string> {
-  if (!Array.isArray(configured)) return [];
+  if (!Array.isArray(configured)) {
+    return [];
+  }
   return configured.flatMap((item) =>
     typeof item === "string" && item.trim().length > 0 ? [item.trim()] : [],
   );
@@ -82,7 +84,9 @@ function buildMatchers(option: unknown): Matchers {
 }
 
 function commentText(comment: Comment): string {
-  if (comment.type !== "Block") return comment.value.trim();
+  if (comment.type !== "Block") {
+    return comment.value.trim();
+  }
   return comment.value
     .split("\n")
     .map((line) => line.replace(/^\s*\**\s*/u, ""))
@@ -95,7 +99,9 @@ function isJSDoc(comment: Comment): boolean {
 }
 
 function isLicenseHeader(comment: Comment, headerEnd: number): boolean {
-  if (comment.end > headerEnd) return false;
+  if (comment.end > headerEnd) {
+    return false;
+  }
   return (
     (comment.type === "Block" && comment.value.startsWith("!")) ||
     licensePattern.test(comment.value)
@@ -111,7 +117,9 @@ function isConstAssertion(node: TypeAssertion): boolean {
 }
 
 function isPrivateMember(node: Node): boolean {
-  if ("accessibility" in node && node.accessibility === "private") return true;
+  if ("accessibility" in node && node.accessibility === "private") {
+    return true;
+  }
   return "key" in node && node.key.type === "PrivateIdentifier";
 }
 
@@ -138,9 +146,13 @@ function declaredNames(node: Node): Array<string> {
   if (node.type === "VariableDeclaration") {
     return node.declarations.flatMap((declarator) => boundNames(declarator.id));
   }
-  if (!("id" in node) || node.id === null) return [];
+  if (!("id" in node) || node.id === null) {
+    return [];
+  }
   let id: Node = node.id;
-  while (id.type === "TSQualifiedName") id = id.left;
+  while (id.type === "TSQualifiedName") {
+    id = id.left;
+  }
   return id.type === "Identifier" ? [id.name] : [];
 }
 
@@ -149,7 +161,9 @@ function localExportNames(statements: ReadonlyArray<Node>): Set<string> {
   for (const statement of statements) {
     if (statement.type === "ExportNamedDeclaration" && statement.source === null) {
       for (const specifier of statement.specifiers) {
-        if (specifier.local.type === "Identifier") names.add(specifier.local.name);
+        if (specifier.local.type === "Identifier") {
+          names.add(specifier.local.name);
+        }
       }
     }
     const target =
@@ -159,7 +173,9 @@ function localExportNames(statements: ReadonlyArray<Node>): Set<string> {
           ? statement.expression
           : null;
     const root = target === null ? null : rootIdentifier(target);
-    if (root !== null) names.add(root);
+    if (root !== null) {
+      names.add(root);
+    }
   }
   return names;
 }
@@ -208,7 +224,9 @@ function collectApi(
       implicit = exportContext || declaredNames(statement).some((name) => listed.has(name));
     }
     const exported = explicit || (visible && implicit);
-    if (exported) api.add(statement);
+    if (exported) {
+      api.add(statement);
+    }
     if (declaration?.type !== "TSModuleDeclaration" || declaration.body?.type !== "TSModuleBlock") {
       continue;
     }
@@ -227,14 +245,24 @@ function lastJSDocBefore(sourceCode: SourceCode, node: Node): Comment | undefine
 }
 
 function isPublicApi(member: Node, api: ReadonlySet<Node>): boolean {
-  if (isPrivateMember(member)) return false;
+  if (isPrivateMember(member)) {
+    return false;
+  }
   let previous = member;
   let current = member.parent;
   while (current !== null) {
-    if (api.has(current)) return true;
-    if (scopeBoundaryKinds.has(current.type) || isPrivateMember(current)) return false;
-    if (current.type === "TSModuleBlock") return false;
-    if (current.type === "ArrowFunctionExpression" && current.body === previous) return false;
+    if (api.has(current)) {
+      return true;
+    }
+    if (scopeBoundaryKinds.has(current.type) || isPrivateMember(current)) {
+      return false;
+    }
+    if (current.type === "TSModuleBlock") {
+      return false;
+    }
+    if (current.type === "ArrowFunctionExpression" && current.body === previous) {
+      return false;
+    }
     previous = current;
     current = current.parent;
   }
@@ -249,7 +277,9 @@ function safetyCommentsFor(
   const found: Array<Comment> = [];
   const collect = (owner: Node) => {
     for (const comment of sourceCode.getCommentsBefore(owner)) {
-      if (comment.end <= assertion.start && pattern.test(comment.value)) found.push(comment);
+      if (comment.end <= assertion.start && pattern.test(comment.value)) {
+        found.push(comment);
+      }
     }
   };
   let current: Node = assertion;
@@ -265,7 +295,9 @@ function safetyCommentsFor(
       }
       return found;
     }
-    if (current.parent === null || current.parent.type === "Program") return found;
+    if (current.parent === null || current.parent.type === "Program") {
+      return found;
+    }
     current = current.parent;
   }
 }
@@ -279,7 +311,9 @@ function isInlineSpace(char: string | undefined): boolean {
 }
 
 function nextLineStart(text: string, end: number): number {
-  if (text.startsWith("\r\n", end)) return end + 2;
+  if (text.startsWith("\r\n", end)) {
+    return end + 2;
+  }
   return Math.min(end + 1, text.length);
 }
 
@@ -308,7 +342,9 @@ function renderChildren(text: string, from: number, to: number, marks: Array<Mar
   for (const mark of marks.toSorted((a, b) => a.start - b.start)) {
     pending += text.slice(cursor, Math.max(cursor, mark.start)) + mark.text;
     cursor = Math.max(cursor, mark.end);
-    if (mark.render === null) continue;
+    if (mark.render === null) {
+      continue;
+    }
     output += renderedJSXText(pending) + mark.render;
     pending = "";
   }
@@ -316,7 +352,9 @@ function renderChildren(text: string, from: number, to: number, marks: Array<Mar
 }
 
 function keepsRenderedText(text: string, parent: Node, planned: ReadonlyMap<Node, Edit>): boolean {
-  if (parent.type !== "JSXElement" && parent.type !== "JSXFragment") return true;
+  if (parent.type !== "JSXElement" && parent.type !== "JSXFragment") {
+    return true;
+  }
   let from = parent.children[0]?.start ?? parent.start;
   let to = parent.children.at(-1)?.end ?? parent.end;
   for (const edit of planned.values()) {
@@ -326,7 +364,9 @@ function keepsRenderedText(text: string, parent: Node, planned: ReadonlyMap<Node
   const before: Array<Mark> = [];
   const after: Array<Mark> = [];
   for (const child of parent.children) {
-    if (child.type === "JSXText") continue;
+    if (child.type === "JSXText") {
+      continue;
+    }
     const render = child.type === "JSXExpressionContainer" ? "" : "\u0000";
     const separator = { start: child.start, end: child.end, text: "", render };
     before.push(separator);
@@ -338,15 +378,27 @@ function keepsRenderedText(text: string, parent: Node, planned: ReadonlyMap<Node
 
 function removal(text: string, start: number, end: number, jsx: boolean): Edit {
   let from = start;
-  while (isInlineSpace(text[from - 1])) from--;
+  while (isInlineSpace(text[from - 1])) {
+    from--;
+  }
   let to = end;
-  while (isInlineSpace(text[to])) to++;
+  while (isInlineSpace(text[to])) {
+    to++;
+  }
   const blankBefore = from === 0 || isLineBreak(text[from - 1]);
   const blankAfter = to === text.length || isLineBreak(text[to]);
-  if (blankBefore && blankAfter) return { start: from, end: nextLineStart(text, to), text: "" };
-  if (jsx) return { start, end, text: "" };
-  if (blankAfter) return { start: from, end, text: "" };
-  if (blankBefore) return { start, end: to, text: "" };
+  if (blankBefore && blankAfter) {
+    return { start: from, end: nextLineStart(text, to), text: "" };
+  }
+  if (jsx) {
+    return { start, end, text: "" };
+  }
+  if (blankAfter) {
+    return { start: from, end, text: "" };
+  }
+  if (blankBefore) {
+    return { start, end: to, text: "" };
+  }
   const separator = lineBreakPattern.test(text.slice(from, end))
     ? "\n"
     : isInlineSpace(text[end])
@@ -383,7 +435,9 @@ function planEdits(
   let index = 0;
   for (const comment of comments) {
     let container = sorted[index];
-    while (container !== undefined && container.end <= comment.start) container = sorted[++index];
+    while (container !== undefined && container.end <= comment.start) {
+      container = sorted[++index];
+    }
     if (container !== undefined && container.start < comment.start && !reportedSet.has(comment)) {
       keepsComment.add(container);
     }
@@ -396,9 +450,13 @@ function planEdits(
   for (const run of commentRuns(text, reported)) {
     const first = run[0];
     const last = run.at(-1);
-    if (first === undefined || last === undefined) continue;
+    if (first === undefined || last === undefined) {
+      continue;
+    }
     let candidate = sorted[index];
-    while (candidate !== undefined && candidate.end <= first.start) candidate = sorted[++index];
+    while (candidate !== undefined && candidate.end <= first.start) {
+      candidate = sorted[++index];
+    }
     const container =
       candidate !== undefined && candidate.start < first.start && last.end < candidate.end
         ? candidate
@@ -413,10 +471,14 @@ function planEdits(
     edits.set(first, removal(text, first.start, last.end, false));
   }
   for (const [parent, planned] of byParent) {
-    if (!keepsRenderedText(text, parent, planned)) continue;
+    if (!keepsRenderedText(text, parent, planned)) {
+      continue;
+    }
     for (const [container, edit] of planned) {
       const owner = owners.get(container);
-      if (owner !== undefined) edits.set(owner, edit);
+      if (owner !== undefined) {
+        edits.set(owner, edit);
+      }
     }
   }
   return edits;
@@ -466,7 +528,9 @@ export const noCommentsRule = defineRule({
       members.push(node);
     };
     const addAssertion = (node: TypeAssertion) => {
-      if (!isConstAssertion(node)) assertions.push(node);
+      if (!isConstAssertion(node)) {
+        assertions.push(node);
+      }
     };
 
     return {
@@ -476,7 +540,9 @@ export const noCommentsRule = defineRule({
         emptyContainers.length = 0;
       },
       JSXExpressionContainer(node) {
-        if (node.expression.type === "JSXEmptyExpression") emptyContainers.push(node);
+        if (node.expression.type === "JSXEmptyExpression") {
+          emptyContainers.push(node);
+        }
       },
       AccessorProperty: addMember,
       MethodDefinition: addMember,
@@ -507,12 +573,18 @@ export const noCommentsRule = defineRule({
         const allowed = new Set<number>();
         for (const node of apiNodes) {
           const doc = lastJSDocBefore(sourceCode, node);
-          if (doc !== undefined) allowed.add(doc.start);
+          if (doc !== undefined) {
+            allowed.add(doc.start);
+          }
         }
         for (const member of members) {
-          if (!isPublicApi(member, apiNodes)) continue;
+          if (!isPublicApi(member, apiNodes)) {
+            continue;
+          }
           const doc = lastJSDocBefore(sourceCode, member);
-          if (doc !== undefined) allowed.add(doc.start);
+          if (doc !== undefined) {
+            allowed.add(doc.start);
+          }
         }
         for (const assertion of assertions) {
           for (const comment of safetyCommentsFor(sourceCode, assertion, matchers.safety)) {
@@ -523,10 +595,16 @@ export const noCommentsRule = defineRule({
         const headerEnd = program.body[0]?.start ?? program.end;
         const comments = sourceCode.getAllComments();
         const reported = comments.filter((comment) => {
-          if (comment.type === "Shebang" || allowed.has(comment.start)) return false;
-          if (isLicenseHeader(comment, headerEnd)) return false;
+          if (comment.type === "Shebang" || allowed.has(comment.start)) {
+            return false;
+          }
+          if (isLicenseHeader(comment, headerEnd)) {
+            return false;
+          }
           const text = commentText(comment);
-          if (directivePatterns.some((pattern) => pattern.test(text))) return false;
+          if (directivePatterns.some((pattern) => pattern.test(text))) {
+            return false;
+          }
           return !matchers.allow.some((pattern) => pattern.test(text));
         });
 
