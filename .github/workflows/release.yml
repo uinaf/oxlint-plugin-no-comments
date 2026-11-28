@@ -22,6 +22,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: uinaf/.github/.github/workflows/release-npm.yml@080140b744b6c6560df14ee787b84db2c486fa84 # v3.2.0
+    uses: uinaf/.github/.github/workflows/release-npm.yml@c932734eb0f1da0274276374e1227a9a368cacba # v3.4.0
     secrets:
       UINAF_CI_APP_PRIVATE_KEY: ${{ secrets.UINAF_CI_APP_PRIVATE_KEY }}
